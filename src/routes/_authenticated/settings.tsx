@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { apiUrl } from "@/lib/basePath";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsPage,
@@ -23,17 +22,14 @@ function SettingsPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-muted-foreground">Configuration and alerting preferences</p>
       </div>
-
       <Tabs defaultValue="general" className="space-y-4">
         <TabsList>
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="alerting">Alerting</TabsTrigger>
         </TabsList>
-
         <TabsContent value="general">
           <GeneralSettingsTab />
         </TabsContent>
-
         <TabsContent value="alerting">
           <AlertingSettingsTab />
         </TabsContent>
@@ -49,7 +45,7 @@ function GeneralSettingsTab() {
   const [newPassword, setNewPassword] = useState("");
 
   useEffect(() => {
-    fetch("/api/settings/general")
+    fetch(apiUrl("/api/settings/general"))
       .then((r) => r.json())
       .then((data) => setSettings(data.settings ?? {}))
       .catch(() => toast("Failed to load settings"))
@@ -62,7 +58,7 @@ function GeneralSettingsTab() {
     try {
       const body: Record<string, string> = { ...settings };
       if (newPassword.trim()) body.authPassword = newPassword.trim();
-      const res = await fetch("/api/settings/general", {
+      const res = await fetch(apiUrl("/api/settings/general"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ settings: body }),
@@ -89,11 +85,9 @@ function GeneralSettingsTab() {
           <p className="text-sm text-muted-foreground">
             Changes are written to the .env file. A restart is required for runtime changes.
           </p>
-
           {Object.keys(settings).length === 0 && (
             <p className="text-sm text-muted-foreground">No .env file found.</p>
           )}
-
           {Object.entries(settings).map(([key, value]) => (
             <div key={key} className="space-y-1.5">
               <Label htmlFor={`env-${key}`}>{key}</Label>
@@ -105,9 +99,7 @@ function GeneralSettingsTab() {
               />
             </div>
           ))}
-
           <Separator />
-
           <div className="space-y-1.5">
             <Label htmlFor="new-password">Change Password</Label>
             <Input
@@ -122,7 +114,6 @@ function GeneralSettingsTab() {
               A new salt and hash will be derived automatically.
             </p>
           </div>
-
           <Button type="submit" disabled={saving}>
             {saving ? "Saving..." : "Save Changes"}
           </Button>
@@ -143,7 +134,7 @@ function AlertingSettingsTab() {
     if (type === "webhook") {
       setWebhookTesting(true);
       try {
-        const res = await fetch("/api/alerting/test", {
+        const res = await fetch(apiUrl("/api/alerting/test"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -161,7 +152,7 @@ function AlertingSettingsTab() {
     } else {
       setNtfyTesting(true);
       try {
-        const res = await fetch("/api/alerting/test", {
+        const res = await fetch(apiUrl("/api/alerting/test"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -181,7 +172,7 @@ function AlertingSettingsTab() {
   }
 
   useEffect(() => {
-    fetch("/api/alerting/settings")
+    fetch(apiUrl("/api/alerting/settings"))
       .then((r) => r.json())
       .then((data) => setSettings(data.settings ?? {}))
       .catch(() => toast("Failed to load settings"))
@@ -195,7 +186,7 @@ function AlertingSettingsTab() {
   async function handleSave() {
     setSaving(true);
     try {
-      const res = await fetch("/api/alerting/settings", {
+      const res = await fetch(apiUrl("/api/alerting/settings"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ settings }),
@@ -230,33 +221,17 @@ function AlertingSettingsTab() {
         <CardContent className="space-y-4">
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="alert-mode"
-                checked={mode === "every"}
-                onChange={() => set("alert.mode", "every")}
-              />
+              <input type="radio" name="alert-mode" checked={mode === "every"} onChange={() => set("alert.mode", "every")} />
               Alert on every match
             </label>
             <label className="flex items-center gap-2 text-sm">
-              <input
-                type="radio"
-                name="alert-mode"
-                checked={mode === "throttle"}
-                onChange={() => set("alert.mode", "throttle")}
-              />
+              <input type="radio" name="alert-mode" checked={mode === "throttle"} onChange={() => set("alert.mode", "throttle")} />
               Alert once, then wait
             </label>
           </div>
           {mode === "throttle" && (
             <div className="flex items-center gap-2">
-              <Input
-                className="w-20"
-                type="number"
-                min="1"
-                value={throttleMin}
-                onChange={(e) => set("alert.throttleMinutes", e.target.value)}
-              />
+              <Input className="w-20" type="number" min="1" value={throttleMin} onChange={(e) => set("alert.throttleMinutes", e.target.value)} />
               <span className="text-sm text-muted-foreground">minutes before alerting again</span>
             </div>
           )}
@@ -269,30 +244,17 @@ function AlertingSettingsTab() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-2">
-            <Switch
-              checked={webhookEnabled}
-              onCheckedChange={(v) => set("reporter.webhook.enabled", v ? "1" : "0")}
-            />
+            <Switch checked={webhookEnabled} onCheckedChange={(v) => set("reporter.webhook.enabled", v ? "1" : "0")} />
             <Label>{webhookEnabled ? "Enabled" : "Disabled"}</Label>
           </div>
           {webhookEnabled && (
             <div className="space-y-1.5">
               <Label htmlFor="wh-url">URL</Label>
-              <Input
-                id="wh-url"
-                value={webhookUrl}
-                placeholder="https://hooks.example.com/alert"
-                onChange={(e) => set("reporter.webhook.url", e.target.value)}
-              />
+              <Input id="wh-url" value={webhookUrl} placeholder="https://hooks.example.com/alert" onChange={(e) => set("reporter.webhook.url", e.target.value)} />
             </div>
           )}
           {webhookEnabled && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => sendTest("webhook")}
-              disabled={webhookTesting || !webhookUrl}
-            >
+            <Button variant="outline" size="sm" onClick={() => sendTest("webhook")} disabled={webhookTesting || !webhookUrl}>
               {webhookTesting ? "Sending..." : "Send Test"}
             </Button>
           )}
@@ -305,40 +267,23 @@ function AlertingSettingsTab() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-2">
-            <Switch
-              checked={ntfyEnabled}
-              onCheckedChange={(v) => set("reporter.ntfy.enabled", v ? "1" : "0")}
-            />
+            <Switch checked={ntfyEnabled} onCheckedChange={(v) => set("reporter.ntfy.enabled", v ? "1" : "0")} />
             <Label>{ntfyEnabled ? "Enabled" : "Disabled"}</Label>
           </div>
           {ntfyEnabled && (
             <>
               <div className="space-y-1.5">
                 <Label htmlFor="ntfy-server">Server URL</Label>
-                <Input
-                  id="ntfy-server"
-                  value={ntfyServerUrl}
-                  onChange={(e) => set("reporter.ntfy.serverUrl", e.target.value)}
-                />
+                <Input id="ntfy-server" value={ntfyServerUrl} onChange={(e) => set("reporter.ntfy.serverUrl", e.target.value)} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="ntfy-topic">Topic</Label>
-                <Input
-                  id="ntfy-topic"
-                  value={ntfyTopic}
-                  placeholder="my-alerts"
-                  onChange={(e) => set("reporter.ntfy.topic", e.target.value)}
-                />
+                <Input id="ntfy-topic" value={ntfyTopic} placeholder="my-alerts" onChange={(e) => set("reporter.ntfy.topic", e.target.value)} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="ntfy-priority">Priority</Label>
-                <Select
-                  value={ntfyPriority}
-                  onValueChange={(v) => set("reporter.ntfy.priority", v)}
-                >
-                  <SelectTrigger className="w-40">
-                    <SelectValue />
-                  </SelectTrigger>
+                <Select value={ntfyPriority} onValueChange={(v) => set("reporter.ntfy.priority", v)}>
+                  <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="min">min</SelectItem>
                     <SelectItem value="low">low</SelectItem>
@@ -350,21 +295,9 @@ function AlertingSettingsTab() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="ntfy-token">Auth token (optional)</Label>
-                <Input
-                  id="ntfy-token"
-                  type="password"
-                  value={ntfyToken}
-                  placeholder="tk_..."
-                  onChange={(e) => set("reporter.ntfy.token", e.target.value)}
-                  autoComplete="off"
-                />
+                <Input id="ntfy-token" type="password" value={ntfyToken} placeholder="tk_..." onChange={(e) => set("reporter.ntfy.token", e.target.value)} autoComplete="off" />
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => sendTest("ntfy")}
-                disabled={ntfyTesting || !ntfyTopic}
-              >
+              <Button variant="outline" size="sm" onClick={() => sendTest("ntfy")} disabled={ntfyTesting || !ntfyTopic}>
                 {ntfyTesting ? "Sending..." : "Send Test"}
               </Button>
             </>

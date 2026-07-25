@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { toast } from "sonner";
+import { apiUrl } from "@/lib/basePath";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -69,7 +70,7 @@ function ProcessDetailPage() {
 
   useEffect(() => {
     if (!proc) return;
-    const es = new EventSource("/api/events");
+    const es = new EventSource(apiUrl("/api/events"));
     es.addEventListener("logs", (event) => {
       try {
         const data = JSON.parse(event.data);

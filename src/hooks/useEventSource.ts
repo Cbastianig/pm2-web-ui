@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { create } from "zustand";
+import { apiUrl } from "@/lib/basePath";
 
 export interface HostInfo {
   cpuPercent: number;
@@ -52,7 +53,7 @@ export function useEventSource() {
   const reconnectRef = useRef<NodeJS.Timeout | null>(null);
 
   const connect = useCallback(() => {
-    const es = new EventSource("/api/events");
+    const es = new EventSource(apiUrl("/api/events"));
     eventSourceRef.current = es;
 
     es.onopen = () => setConnected(true);
