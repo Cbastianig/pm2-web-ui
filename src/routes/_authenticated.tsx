@@ -3,9 +3,10 @@ import { useServerFn } from "@tanstack/react-start";
 import { logoutFn } from "@/server/auth/functions";
 import { checkSessionFn } from "@/server/auth/functions";
 import { useEventSourceHost, useEventSourceConnection } from "@/hooks/useEventSource";
-import { Activity, Settings, Rocket, Menu, X, Cpu, HardDrive, Disc } from "lucide-react";
+import { Activity, Settings, Rocket, Menu, X, Cpu, HardDrive, Disc, LayoutDashboard, ChevronsLeft, ChevronsRight, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { useState } from "react";
 
 export const Route = createFileRoute("/_authenticated")({
@@ -18,6 +19,8 @@ export const Route = createFileRoute("/_authenticated")({
   },
   component: AuthLayout,
 });
+
+const SIDEBAR_STORAGE_KEY = "pm2-webui-sidebar-collapsed";
 
 function formatBytes(bytes: number) {
   if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(1)} GB`;
@@ -50,11 +53,58 @@ function HostMetricsBar() {
   );
 }
 
+function SidebarLink({
+  to,
+  icon: Icon,
+  label,
+  collapsed,
+  onNavigate,
+}: {
+  to: string;
+  icon: typeof Activity;
+  label: string;
+  collapsed: boolean;
+  onNavigate: () => void;
+}) {
+  return (
+    <Link
+      to={to}
+      title={collapsed ? label : undefined}
+      onClick={onNavigate}
+      className={cn(
+        "flex items-center gap-2 rounded-md py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground [&.active]:bg-accent [&.active]:text-accent-foreground",
+        collapsed ? "justify-center px-0" : "px-3",
+      )}
+    >
+      <Icon className="size-4 shrink-0" />
+      {!collapsed && <span>{label}</span>}
+    </Link>
+  );
+}
+
 function AuthLayout() {
   const logout = useServerFn(logoutFn);
   const navigate = useNavigate();
   const connected = useEventSourceConnection();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(SIDEBAR_STORAGE_KEY, next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  }
 
   async function handleLogout() {
     try {
@@ -76,42 +126,89 @@ function AuthLayout() {
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-border bg-background transition-transform lg:static lg:translate-x-0 ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={cn(
+          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-border bg-background transition-all duration-200 lg:static lg:translate-x-0",
+          collapsed ? "w-16" : "w-64",
+          sidebarOpen ? "translate-x-0" : "-translate-x-full",
+        )}
       >
-        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-          <Activity className="size-5 text-accent" />
-          <span className="text-sm font-semibold">pm2-process-web-ui</span>
+        <div className="flex items-center justify-between border-b border-border px-3 py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <Activity className="size-5 shrink-0 text-accent" />
+            {!collapsed && (
+              <span className="truncate text-sm font-semibold whitespace-nowrap">
+                pm2-process-web-ui
+              </span>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="hidden shrink-0 lg:inline-flex"
+            onClick={toggleCollapsed}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? <ChevronsRight className="size-4" /> : <ChevronsLeft className="size-4" />}
+          </Button>
         </div>
 
         <nav className="flex flex-1 flex-col gap-1 p-3">
-          <Link
+          {!collapsed && (
+            <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Processes
+            </p>
+          )}
+          <SidebarLink
             to="/dashboard"
-            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground [&.active]:bg-accent [&.active]:text-accent-foreground"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <Activity className="size-4" /> Dashboard
-          </Link>
-          <Link
+            icon={Activity}
+            label="Dashboard"
+            collapsed={collapsed}
+            onNavigate={() => setSidebarOpen(false)}
+          />
+          <SidebarLink
             to="/processes"
-            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground [&.active]:bg-accent [&.active]:text-accent-foreground"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <Rocket className="size-4" /> Processes
-          </Link>
-          <Link
+            icon={Rocket}
+            label="Process List"
+            collapsed={collapsed}
+            onNavigate={() => setSidebarOpen(false)}
+          />
+
+          {!collapsed && (
+            <p className="mb-1 mt-4 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Operations
+            </p>
+          )}
+          <SidebarLink
+            to="/ops"
+            icon={LayoutDashboard}
+            label="Applications"
+            collapsed={collapsed}
+            onNavigate={() => setSidebarOpen(false)}
+          />
+
+          <div className="mt-auto" />
+          <SidebarLink
             to="/settings"
-            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground [&.active]:bg-accent [&.active]:text-accent-foreground"
-            onClick={() => setSidebarOpen(false)}
-          >
-            <Settings className="size-4" /> Settings
-          </Link>
+            icon={Settings}
+            label="Settings"
+            collapsed={collapsed}
+            onNavigate={() => setSidebarOpen(false)}
+          />
         </nav>
 
         <div className="border-t border-border p-3">
-          <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={handleLogout}>
-            Sign out
+          <Button
+            variant="ghost"
+            className={cn(
+              "w-full text-muted-foreground",
+              collapsed ? "justify-center px-0" : "justify-start",
+            )}
+            onClick={handleLogout}
+            title={collapsed ? "Sign out" : undefined}
+          >
+            <LogOut className="size-4 shrink-0" />
+            {!collapsed && "Sign out"}
           </Button>
         </div>
       </aside>

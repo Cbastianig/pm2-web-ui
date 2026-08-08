@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm";
 
 const pm2Connect = promisify(pm2.connect.bind(pm2));
 
-function detectLogLevel(text: string): string {
+export function detectLogLevel(text: string): string {
   // 1. JSON-style "level" field
   if (/"level"\s*:\s*"(?:error|fatal|critical)"/i.test(text)) return "error";
   if (/"level"\s*:\s*"warn(?:ing)?"/i.test(text)) return "warn";

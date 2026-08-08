@@ -9,25 +9,30 @@ import {
   stopProcessFn,
   startProcessFn,
   deleteProcessFn,
-  flushLogsFn,
 } from "@/server/actions/process-actions";
-import { toggleMonitoringFn, toggleAlertPrefsFn } from "@/server/actions/monitoring-actions";
+import {
+  toggleMonitoringFn,
+  toggleAlertPrefsFn,
+  getProcessMetricsFn,
+} from "@/server/actions/monitoring-actions";
+import { ProcessLogs } from "@/components/process-logs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Checkbox } from "@/components/ui/checkbox";
-import { useState, useMemo } from "react";
-import { toast } from "sonner";
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "@/components/ui/tabs";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,6 +43,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { cn } from "@/lib/utils";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { toast } from "sonner";
 import {
   Power,
   PowerOff,
@@ -46,14 +54,23 @@ import {
   Search,
   ChevronRight,
   Loader2,
-  Eraser,
   Bell,
   BellOff,
+  Activity,
+  FileText,
+  BarChart3,
+  Globe,
+  ListFilter,
+  ExternalLink,
+  Rocket,
+  type LucideIcon,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/processes/")({
   component: ProcessListPage,
 });
+
+type ProcessItem = ReturnType<typeof useEventSource>[number];
 
 function formatBytes(bytes: number) {
   if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(1)} GB`;
@@ -64,20 +81,589 @@ function formatBytes(bytes: number) {
 
 function formatUptime(uptime: number | null) {
   if (!uptime) return "-";
-  const totalSeconds = Math.floor(uptime / 1000);
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
+  const tot = Math.floor(uptime / 1000);
+  const d = Math.floor(tot / 86400);
+  const h = Math.floor((tot % 86400) / 3600);
+  const m = Math.floor((tot % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h ${m}m`;
   return `${h}h ${m}m`;
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const variant =
-    status === "online"
-      ? "default"
-      : status === "stopped"
-        ? "secondary"
-        : "destructive";
-  return <Badge variant={variant as any}>{status}</Badge>;
+function statusInfo(proc: ProcessItem) {
+  const status = proc.isOrphan ? "orphan" : proc.status;
+  if (status === "online")
+    return { dot: "bg-green-500", text: "text-green-500", label: "online" };
+  if (status === "stopped")
+    return {
+      dot: "bg-muted-foreground",
+      text: "text-muted-foreground",
+      label: "stopped",
+    };
+  if (status === "errored" || status === "error")
+    return { dot: "bg-red-500", text: "text-red-500", label: status };
+  if (status === "orphan")
+    return { dot: "bg-orange-500", text: "text-orange-500", label: "orphan" };
+  return {
+    dot: "bg-orange-400",
+    text: "text-orange-400",
+    label: status || "unknown",
+  };
+}
+
+function StatusPill({ proc }: { proc: ProcessItem }) {
+  const info = statusInfo(proc);
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide",
+        info.text,
+      )}
+    >
+      <span className={cn("size-1.5 rounded-full", info.dot)} />
+      {info.label}
+    </span>
+  );
+}
+
+function EmptyState({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 p-8 text-center">
+      <div className="flex size-12 items-center justify-center rounded-full border border-border bg-muted/50">
+        <Icon className="size-6 text-muted-foreground" />
+      </div>
+      <p className="text-sm font-medium">{title}</p>
+      <p className="max-w-xs text-sm text-muted-foreground">{description}</p>
+    </div>
+  );
+}
+
+function MetricCell({
+  label,
+  value,
+  muted,
+}: {
+  label: string;
+  value: React.ReactNode;
+  muted?: boolean;
+}) {
+  return (
+    <div className="min-w-0 bg-card px-3 py-2.5">
+      <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </p>
+      <p
+        className={cn(
+          "truncate text-sm font-semibold tabular-nums",
+          muted && "text-muted-foreground",
+        )}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function DetailRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-border/60 py-2 text-sm last:border-0">
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className="truncate font-medium">{value}</span>
+    </div>
+  );
+}
+
+function formatSampleTime(t: number) {
+  return new Date(t).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function Sparkline({
+  data,
+  format,
+}: {
+  data: Array<{ t: number; value: number }>;
+  format: (value: number) => string;
+}) {
+  const [hover, setHover] = useState<{ x: number; idx: number } | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  if (data.length < 2) {
+    return <div className="h-10 w-full" />;
+  }
+
+  const w = 300;
+  const h = 40;
+  const values = data.map((d) => d.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const points = data.map((d, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - 3 - ((d.value - min) / range) * (h - 6);
+    return { x, y };
+  });
+
+  function handleMove(e: React.MouseEvent<HTMLDivElement>) {
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = e.clientX - rect.left;
+    const frac = Math.min(1, Math.max(0, x / rect.width));
+    const idx = Math.round(frac * (data.length - 1));
+    setHover({ x: (idx / (data.length - 1)) * w, idx });
+  }
+
+  const hoverPoint = hover ? points[hover.idx] : null;
+  const hoverData = hover ? data[hover.idx] : null;
+
+  return (
+    <div
+      ref={wrapRef}
+      className="relative h-10 w-full"
+      onMouseMove={handleMove}
+      onMouseLeave={() => setHover(null)}
+    >
+      <svg
+        viewBox={`0 0 ${w} ${h}`}
+        preserveAspectRatio="none"
+        className="h-full w-full"
+      >
+        {hoverPoint && (
+          <line
+            x1={hoverPoint.x}
+            y1={0}
+            x2={hoverPoint.x}
+            y2={h}
+            stroke="currentColor"
+            strokeWidth={1}
+            strokeDasharray="3 3"
+            opacity={0.4}
+          />
+        )}
+        <polyline
+          points={points
+            .map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+            .join(" ")}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.5}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        {hoverPoint && (
+          <circle
+            cx={hoverPoint.x}
+            cy={hoverPoint.y}
+            r={2.5}
+            fill="currentColor"
+          />
+        )}
+      </svg>
+      {hoverData && hoverPoint && (
+        <div
+          className="pointer-events-none absolute bottom-full z-10 mb-1.5 w-max -translate-x-1/2 rounded-md border border-border bg-popover px-2 py-1 text-xs shadow-sm"
+          style={{ left: `${Math.min(90, Math.max(10, (hoverPoint.x / w) * 100))}%` }}
+        >
+          <div className="font-semibold tabular-nums">
+            {format(hoverData.value)}
+          </div>
+          <div className="text-muted-foreground tabular-nums">
+            {formatSampleTime(hoverData.t)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MetricsTab({ proc }: { proc: ProcessItem }) {
+  const getMetrics = useServerFn(getProcessMetricsFn);
+  const [stored, setStored] = useState<
+    Array<{
+      sampledAt: number;
+      cpu: number | null;
+      memory: number | null;
+    }>
+  >([]);
+  const [loading, setLoading] = useState(true);
+  const [history, setHistory] = useState<
+    Array<{ t: number; cpu: number; memory: number }>
+  >([]);
+
+  useEffect(() => {
+    setHistory([]);
+    setStored([]);
+    setLoading(true);
+    if (!proc.isMonitored) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    const load = () => {
+      getMetrics({ data: { processName: proc.name } })
+        .then((res) => {
+          if (!cancelled) setStored(res.samples ?? []);
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    };
+    load();
+    const interval = setInterval(load, 10_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [proc.name, proc.isMonitored, getMetrics]);
+
+  useEffect(() => {
+    setHistory((prev) => {
+      const now = Date.now();
+      const last = prev[prev.length - 1];
+      if (last && now - last.t < 1500) return prev;
+      const next = [...prev, { t: now, cpu: proc.cpu, memory: proc.memory }];
+      return next.length > 90 ? next.slice(-90) : next;
+    });
+  }, [proc]);
+
+  const combined = useMemo(() => {
+    const storedPoints = stored.map((s) => ({
+      t: s.sampledAt,
+      cpu: Number(s.cpu ?? 0),
+      memory: Number(s.memory ?? 0),
+    }));
+    return [...storedPoints, ...history];
+  }, [stored, history]);
+
+  if (loading && combined.length === 0) {
+    return (
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Skeleton className="h-28" />
+        <Skeleton className="h-28" />
+      </div>
+    );
+  }
+  if (combined.length === 0) {
+    return (
+      <EmptyState
+        icon={BarChart3}
+        title="Collecting metric samples"
+        description="CPU and memory samples will appear here as live data is collected."
+      />
+    );
+  }
+
+  const latest = combined[combined.length - 1]!;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">
+          {combined.length} samples
+          {!proc.isMonitored && " · monitoring disabled, live samples only"}
+        </span>
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="size-1.5 animate-pulse rounded-full bg-green-500" />
+          Live
+        </span>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-border p-3">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              CPU
+            </span>
+            <span className="text-sm font-semibold tabular-nums">
+              {proc.cpu.toFixed(1)}%
+            </span>
+          </div>
+          <div className="mt-1 text-emerald-500">
+            <Sparkline
+              data={combined.map((s) => ({ t: s.t, value: s.cpu }))}
+              format={(v) => `${v.toFixed(1)}%`}
+            />
+          </div>
+        </div>
+        <div className="rounded-lg border border-border p-3">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Memory
+            </span>
+            <span className="text-sm font-semibold tabular-nums">
+              {formatBytes(proc.memory)}
+            </span>
+          </div>
+          <div className="mt-1 text-sky-500">
+            <Sparkline
+              data={combined.map((s) => ({ t: s.t, value: s.memory }))}
+              format={(v) => formatBytes(v)}
+            />
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">
+        <span>
+          Latest CPU{" "}
+          <span className="font-medium text-foreground tabular-nums">
+            {latest.cpu.toFixed(1)}%
+          </span>
+        </span>
+        <span>
+          Latest memory{" "}
+          <span className="font-medium text-foreground tabular-nums">
+            {formatBytes(latest.memory)}
+          </span>
+        </span>
+        <span>
+          Restarts{" "}
+          <span className="font-medium text-foreground tabular-nums">
+            {proc.restarts}
+          </span>
+        </span>
+        <span>
+          Uptime{" "}
+          <span className="font-medium text-foreground">
+            {formatUptime(proc.uptime)}
+          </span>
+        </span>
+        <span>
+          PID{" "}
+          <span className="font-medium text-foreground tabular-nums">
+            {proc.pid ?? "-"}
+          </span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+interface ProcessSidebarProps {
+  processes: ProcessItem[];
+  selectedName: string | null;
+  onSelect: (name: string) => void;
+  connected: boolean;
+  onQuickAction: (type: "restart" | "stop" | "start" | "delete", proc: ProcessItem) => void;
+  busy: Record<string, boolean>;
+}
+
+function ProcessSidebar({
+  processes,
+  selectedName,
+  onSelect,
+  connected,
+  onQuickAction,
+  busy,
+}: ProcessSidebarProps) {
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    if (!search) return processes;
+    const q = search.toLowerCase();
+    return processes.filter((p) => p.name.toLowerCase().includes(q));
+  }, [processes, search]);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="border-b border-border px-3 pb-2 pt-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              Processes
+            </span>
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                connected ? "bg-green-500" : "bg-red-500",
+              )}
+            />
+          </div>
+          <span className="text-xs font-medium tabular-nums text-muted-foreground">
+            {processes.length}
+          </span>
+        </div>
+        <div className="relative mt-2">
+          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            className="h-8 pl-8 text-xs"
+            placeholder="Search processes..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="flex-1 space-y-1 overflow-y-auto p-2">
+        {filtered.length === 0 && (
+          <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+            {processes.length === 0
+              ? "No processes found. Is PM2 running?"
+              : "No results match your search."}
+          </p>
+        )}
+        {filtered.map((proc) => {
+          const info = statusInfo(proc);
+          const isSelected = selectedName === proc.name;
+          return (
+            <div
+              key={proc.name}
+              role="button"
+              tabIndex={0}
+              onClick={() => onSelect(proc.name)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelect(proc.name);
+                }
+              }}
+              className={cn(
+                "group relative flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring",
+                isSelected
+                  ? "bg-accent text-accent-foreground ring-1 ring-ring/40"
+                  : "hover:bg-muted/70",
+              )}
+            >
+              <span
+                className={cn("size-2 shrink-0 rounded-full", info.dot)}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium leading-tight">
+                  {proc.name}
+                </span>
+                <span className="block truncate text-xs leading-tight text-muted-foreground">
+                  {info.label}
+                </span>
+              </span>
+              {proc.isOrphan && (
+                <Badge variant="outline" className="px-1.5 text-[10px]">
+                  orphan
+                </Badge>
+              )}
+              <span
+                data-selected={isSelected ? "" : undefined}
+                className="hidden items-center gap-0.5 group-focus-within:flex group-hover:flex data-[selected]:flex"
+              >
+                {proc.id != null && proc.status !== "stopped" && (
+                  <>
+                    <QuickActionButton
+                      title="Restart"
+                      disabled={busy[`restart:${proc.name}`]}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onQuickAction("restart", proc);
+                      }}
+                    >
+                      {busy[`restart:${proc.name}`] ? (
+                        <Loader2 className="size-3 animate-spin" />
+                      ) : (
+                        <RotateCcw className="size-3" />
+                      )}
+                    </QuickActionButton>
+                    <QuickActionButton
+                      title="Stop"
+                      disabled={busy[`stop:${proc.name}`]}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onQuickAction("stop", proc);
+                      }}
+                    >
+                      {busy[`stop:${proc.name}`] ? (
+                        <Loader2 className="size-3 animate-spin" />
+                      ) : (
+                        <PowerOff className="size-3" />
+                      )}
+                    </QuickActionButton>
+                  </>
+                )}
+                {proc.id != null && proc.status === "stopped" && (
+                  <QuickActionButton
+                    title="Start"
+                    disabled={busy[`start:${proc.name}`]}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onQuickAction("start", proc);
+                    }}
+                  >
+                    {busy[`start:${proc.name}`] ? (
+                      <Loader2 className="size-3 animate-spin" />
+                    ) : (
+                      <Power className="size-3" />
+                    )}
+                  </QuickActionButton>
+                )}
+                {proc.id != null && (
+                  <QuickActionButton
+                    title="Delete"
+                    disabled={busy[`delete:${proc.name}`]}
+                    className="text-destructive hover:text-destructive"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onQuickAction("delete", proc);
+                    }}
+                  >
+                    {busy[`delete:${proc.name}`] ? (
+                      <Loader2 className="size-3 animate-spin" />
+                    ) : (
+                      <Trash2 className="size-3" />
+                    )}
+                  </QuickActionButton>
+                )}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function QuickActionButton({
+  title,
+  onClick,
+  className,
+  disabled,
+  children,
+}: {
+  title: string;
+  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  className?: string;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "rounded p-1 text-muted-foreground transition-colors hover:bg-background hover:text-foreground disabled:pointer-events-none disabled:opacity-60",
+        className,
+      )}
+    >
+      {children}
+    </button>
+  );
 }
 
 function ProcessListPage() {
@@ -87,42 +673,32 @@ function ProcessListPage() {
   const stop = useServerFn(stopProcessFn);
   const start = useServerFn(startProcessFn);
   const deleteProc = useServerFn(deleteProcessFn);
-  const flushLogs = useServerFn(flushLogsFn);
   const toggleMonitoring = useServerFn(toggleMonitoringFn);
   const toggleAlertPrefs = useServerFn(toggleAlertPrefsFn);
 
-  const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selectedName, setSelectedName] = useState<string | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [confirmAction, setConfirmAction] = useState<{
     type: "restart" | "stop" | "delete";
     procId: number | string;
     name: string;
   } | null>(null);
 
-  const filtered = useMemo(() => {
-    if (!search) return processes;
-    const q = search.toLowerCase();
-    return processes.filter((p) => p.name.toLowerCase().includes(q));
-  }, [processes, search]);
-
-  const allSelected = filtered.length > 0 && selected.size === filtered.length;
-  const someSelected = selected.size > 0 && selected.size < filtered.length;
-
-  function toggleAll() {
-    if (allSelected) setSelected(new Set());
-    else setSelected(new Set(filtered.map((p) => p.name)));
+  function markBusy(key: string, value: boolean) {
+    setBusy((prev) => ({ ...prev, [key]: value }));
   }
 
-  function toggleOne(name: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
-  }
+  const selectedProc = useMemo(() => {
+    if (!selectedName) return processes[0] ?? null;
+    return (
+      processes.find((p) => p.name === selectedName) ?? processes[0] ?? null
+    );
+  }, [processes, selectedName]);
 
   async function handleRestart(processId: number | string, name?: string) {
+    const key = `restart:${name || String(processId)}`;
+    markBusy(key, true);
     try {
       await restart({ data: { processId: String(processId) } });
       toast.success(`${name || "Process"} restarted`);
@@ -130,9 +706,13 @@ function ProcessListPage() {
       toast.error(
         `${name || "Restart"} failed: ${e instanceof Error ? e.message : "error"}`,
       );
+    } finally {
+      markBusy(key, false);
     }
   }
   async function handleStart(processId: number | string, name?: string) {
+    const key = `start:${name || String(processId)}`;
+    markBusy(key, true);
     try {
       await start({ data: { processId: String(processId) } });
       toast.success(`${name || "Process"} started`);
@@ -140,9 +720,13 @@ function ProcessListPage() {
       toast.error(
         `${name || "Start"} failed: ${e instanceof Error ? e.message : "error"}`,
       );
+    } finally {
+      markBusy(key, false);
     }
   }
   async function handleStop(processId: number | string, name?: string) {
+    const key = `stop:${name || String(processId)}`;
+    markBusy(key, true);
     try {
       await stop({ data: { processId: String(processId) } });
       toast.success(`${name || "Process"} stopped`);
@@ -150,9 +734,13 @@ function ProcessListPage() {
       toast.error(
         `${name || "Stop"} failed: ${e instanceof Error ? e.message : "error"}`,
       );
+    } finally {
+      markBusy(key, false);
     }
   }
   async function handleDelete(processId: number | string, name?: string) {
+    const key = `delete:${name || String(processId)}`;
+    markBusy(key, true);
     try {
       await deleteProc({ data: { processId: String(processId) } });
       toast.success(`${name || "Process"} deleted`);
@@ -160,9 +748,13 @@ function ProcessListPage() {
       toast.error(
         `${name || "Delete"} failed: ${e instanceof Error ? e.message : "error"}`,
       );
+    } finally {
+      markBusy(key, false);
     }
   }
   async function handleToggleMon(name: string, monitored: boolean) {
+    const key = `mon:${name}`;
+    markBusy(key, true);
     try {
       await toggleMonitoring({
         data: { pm2Name: name, monitored: !monitored },
@@ -176,19 +768,13 @@ function ProcessListPage() {
       toast.error(
         `Monitoring toggle failed: ${e instanceof Error ? e.message : "error"}`,
       );
+    } finally {
+      markBusy(key, false);
     }
   }
-
-  async function handleFlush(processId: number | string, name?: string) {
-    try {
-      await flushLogs({ data: { processId: String(processId) } });
-      toast.success(`Logs flushed for ${name || "process"}`);
-    } catch (e) {
-      toast.error(`Flush failed: ${e instanceof Error ? e.message : "error"}`);
-    }
-  }
-
   async function handleMuteToggle(name: string, enabled: boolean) {
+    const key = `alert:${name}`;
+    markBusy(key, true);
     try {
       await toggleAlertPrefs({
         data: { pm2Name: name, alertsEnabled: !enabled },
@@ -200,272 +786,374 @@ function ProcessListPage() {
       toast.error(
         `Alert toggle failed: ${e instanceof Error ? e.message : "error"}`,
       );
+    } finally {
+      markBusy(key, false);
+    }
+  }
+
+  function handleQuickAction(
+    type: "restart" | "stop" | "start" | "delete",
+    proc: ProcessItem,
+  ) {
+    if (type === "start") {
+      if (proc.id != null) handleStart(proc.id, proc.name);
+      return;
+    }
+    if (proc.id != null) {
+      setConfirmAction({ type, procId: proc.id, name: proc.name });
     }
   }
 
   if (!connected) {
     return (
-      <div className="space-y-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Processes</h1>
-          <p className="text-muted-foreground">
-            Manage and monitor PM2 processes 
-          </p>
-        </div>
-        <div className="flex flex-col items-center justify-center gap-4 rounded-lg border border-border py-20">
-          <Loader2 className="size-10 animate-spin text-accent" />
-          <p className="text-sm text-muted-foreground">Connecting to PM2...</p>
-          <div className="w-full max-w-2xl space-y-2 px-6">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-4">
-                <Skeleton className="size-4 rounded" />
-                <Skeleton className="h-4 flex-1" />
-                <Skeleton className="h-4 w-16" />
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-4 w-16" />
-                <Skeleton className="h-4 w-12" />
-                <Skeleton className="h-4 w-12" />
-                <Skeleton className="h-4 w-10" />
-              </div>
+      <div className="flex flex-col gap-4 md:h-[calc(100dvh-5.75rem)] md:flex-row">
+        <aside className="hidden shrink-0 flex-col overflow-hidden rounded-lg border border-border bg-card md:flex md:w-64 lg:w-72 xl:w-80">
+          <div className="space-y-2 border-b border-border p-3">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-8 w-full" />
+          </div>
+          <div className="flex-1 space-y-2 p-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full rounded-lg" />
             ))}
           </div>
+        </aside>
+        <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-4 overflow-hidden rounded-lg border border-border bg-card">
+          <Loader2 className="size-10 animate-spin text-accent" />
+          <p className="text-sm text-muted-foreground">Connecting to PM2...</p>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Processes</h1>
-          <p className="text-muted-foreground">
-            {processes.length} process{processes.length !== 1 ? "es" : ""}
-          </p>
-        </div>
-        <Badge variant={connected ? "default" : "destructive"}>
-          {connected ? "Live" : "Disconnected"}
-        </Badge>
-      </div>
+  const proc = selectedProc;
 
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            placeholder="Search processes..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+  return (
+    <div className="flex flex-col gap-4 md:h-[calc(100dvh-5.75rem)] md:flex-row">
+      {/* Sidebar: processes */}
+      <aside className="hidden shrink-0 flex-col overflow-hidden rounded-lg border border-border bg-card md:flex md:w-64 lg:w-72 xl:w-80">
+        <ProcessSidebar
+          processes={processes}
+          selectedName={selectedName}
+          onSelect={setSelectedName}
+          connected={connected}
+          onQuickAction={handleQuickAction}
+          busy={busy}
+        />
+      </aside>
+
+      {/* Mobile processes drawer */}
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <SheetContent side="left" className="w-[85vw] max-w-[320px] p-0">
+          <SheetHeader className="sr-only">
+            <SheetTitle>Processes</SheetTitle>
+          </SheetHeader>
+          <ProcessSidebar
+            processes={processes}
+            selectedName={selectedName}
+            onSelect={(name) => {
+              setSelectedName(name);
+              setMobileOpen(false);
+            }}
+            connected={connected}
+            onQuickAction={(type, p) => {
+              handleQuickAction(type, p);
+              setMobileOpen(false);
+            }}
+            busy={busy}
           />
-        </div>
-        {selected.size > 0 && (
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                setConfirmAction({
-                  type: "restart",
-                  procId: 0,
-                  name: `${selected.size} process${selected.size > 1 ? "es" : ""}`,
-                })
-              }
-            >
-              <RotateCcw className="mr-1 size-3" /> Restart ({selected.size})
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                setConfirmAction({
-                  type: "stop",
-                  procId: 0,
-                  name: `${selected.size} process${selected.size > 1 ? "es" : ""}`,
-                })
-              }
-            >
-              <PowerOff className="mr-1 size-3" /> Stop ({selected.size})
-            </Button>
-          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Right panel: selected process detail */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card">
+        {!proc ? (
+          <EmptyState
+            icon={Rocket}
+            title="Select a process"
+            description="Select a PM2 process from the sidebar to view its details."
+          />
+        ) : (
+          <>
+            {/* Mobile process selector */}
+            <div className="flex items-center gap-2 border-b border-border px-3 py-2 md:hidden">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 justify-start truncate"
+                onClick={() => setMobileOpen(true)}
+              >
+                <ListFilter className="size-3.5 shrink-0" />
+                <span className="truncate">{proc.name}</span>
+                <ChevronRight className="ml-auto size-3.5 shrink-0 text-muted-foreground" />
+              </Button>
+            </div>
+
+            {/* Header */}
+            <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-center gap-2">
+                  <h2 className="truncate text-lg font-semibold tracking-tight">
+                    {proc.name}
+                  </h2>
+                  {proc.isOrphan && (
+                    <Badge variant="outline" className="text-[10px]">
+                      orphan
+                    </Badge>
+                  )}
+                </div>
+                <div className="mt-0.5 flex items-center gap-2">
+                  <StatusPill proc={proc} />
+                  <span className="text-xs text-muted-foreground">
+                    {proc.id != null
+                      ? `Instance ${proc.id}`
+                      : "Unmanaged process"}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {proc.id != null && proc.status !== "stopped" && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busy[`restart:${proc.name}`]}
+                      onClick={() =>
+                        setConfirmAction({
+                          type: "restart",
+                          procId: proc.id!,
+                          name: proc.name,
+                        })
+                      }
+                    >
+                      {busy[`restart:${proc.name}`] ? (
+                        <Loader2 className="mr-1 size-3 animate-spin" />
+                      ) : (
+                        <RotateCcw className="mr-1 size-3" />
+                      )}{" "}
+                      Restart
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={busy[`stop:${proc.name}`]}
+                      onClick={() =>
+                        setConfirmAction({
+                          type: "stop",
+                          procId: proc.id!,
+                          name: proc.name,
+                        })
+                      }
+                    >
+                      {busy[`stop:${proc.name}`] ? (
+                        <Loader2 className="mr-1 size-3 animate-spin" />
+                      ) : (
+                        <PowerOff className="mr-1 size-3" />
+                      )}{" "}
+                      Stop
+                    </Button>
+                  </>
+                )}
+                {proc.id != null && proc.status === "stopped" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy[`start:${proc.name}`]}
+                    onClick={() => handleStart(proc.id!, proc.name)}
+                  >
+                    {busy[`start:${proc.name}`] ? (
+                      <Loader2 className="mr-1 size-3 animate-spin" />
+                    ) : (
+                      <Power className="mr-1 size-3" />
+                    )}{" "}
+                    Start
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  title="Open full detail view"
+                  nativeButton={false}
+                  render={
+                    <Link
+                      to="/processes/$id"
+                      params={{ id: String(proc.id ?? proc.name) }}
+                    />
+                  }
+                >
+                  <ExternalLink className="size-3.5" />
+                </Button>
+                {proc.id != null && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-destructive hover:text-destructive"
+                    disabled={busy[`delete:${proc.name}`]}
+                    onClick={() =>
+                      setConfirmAction({
+                        type: "delete",
+                        procId: proc.id!,
+                        name: proc.name,
+                      })
+                    }
+                    title="Delete"
+                  >
+                    {busy[`delete:${proc.name}`] ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="size-3.5" />
+                    )}
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Metrics */}
+            <div className="grid grid-cols-2 gap-px border-b border-border bg-border sm:grid-cols-3 lg:grid-cols-5">
+              <MetricCell label="CPU" value={`${proc.cpu.toFixed(1)}%`} />
+              <MetricCell label="Memory" value={formatBytes(proc.memory)} />
+              <MetricCell label="Uptime" value={formatUptime(proc.uptime)} />
+              <MetricCell label="Restarts" value={proc.restarts} />
+              <MetricCell
+                label="PID"
+                value={proc.pid ?? "-"}
+                muted={proc.pid == null}
+              />
+            </div>
+
+            {/* Tabs */}
+            <Tabs defaultValue="overview" className="flex min-h-0 flex-1 flex-col">
+              <TabsList variant="line" className="w-full px-3 pt-1">
+                <TabsTrigger value="overview">
+                  <Activity /> Overview
+                </TabsTrigger>
+                <TabsTrigger value="logs">
+                  <FileText /> Logs
+                </TabsTrigger>
+                <TabsTrigger value="metrics">
+                  <BarChart3 /> Metrics
+                </TabsTrigger>
+                <TabsTrigger value="environment">
+                  <Globe /> Environment
+                </TabsTrigger>
+              </TabsList>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <TabsContent value="overview" className="p-4">
+                  <div className="grid gap-x-10 sm:grid-cols-2">
+                    <div className="max-w-md">
+                      <DetailRow label="Process name" value={proc.name} />
+                      <DetailRow
+                        label="Instance ID"
+                        value={proc.id != null ? String(proc.id) : "-"}
+                      />
+                      <DetailRow label="Status" value={<StatusPill proc={proc} />} />
+                      <DetailRow label="PID" value={proc.pid ?? "-"} />
+                      <DetailRow label="Uptime" value={formatUptime(proc.uptime)} />
+                      <DetailRow label="Restarts" value={proc.restarts} />
+                      <DetailRow
+                        label="Orphan"
+                        value={proc.isOrphan ? "Yes" : "No"}
+                      />
+                    </div>
+                    <div className="mt-2 space-y-3">
+                      <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">Monitoring</p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {proc.isMonitored
+                              ? "Logs and metrics are being recorded."
+                              : "Logs and metrics are not recorded."}
+                          </p>
+                        </div>
+                        <Switch
+                          checked={proc.isMonitored}
+                          disabled={busy[`mon:${proc.name}`]}
+                          onCheckedChange={() =>
+                            handleToggleMon(proc.name, proc.isMonitored)
+                          }
+                          aria-label={`Toggle monitoring for ${proc.name}`}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">Alerts</p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {proc.alertsEnabled
+                              ? "Alert notifications are enabled."
+                              : "Alert notifications are muted."}
+                          </p>
+                        </div>
+                        <Button
+                          variant={proc.alertsEnabled ? "outline" : "secondary"}
+                          size="sm"
+                          disabled={busy[`alert:${proc.name}`]}
+                          onClick={() =>
+                            handleMuteToggle(proc.name, proc.alertsEnabled)
+                          }
+                        >
+                          {busy[`alert:${proc.name}`] ? (
+                            <Loader2 className="mr-1 size-3 animate-spin" />
+                          ) : proc.alertsEnabled ? (
+                            <BellOff className="mr-1 size-3" />
+                          ) : (
+                            <Bell className="mr-1 size-3" />
+                          )}{" "}
+                          {proc.alertsEnabled ? "Mute" : "Enable"}
+                        </Button>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        nativeButton={false}
+                        render={
+                          <Link
+                            to="/processes/$id"
+                            params={{ id: String(proc.id ?? proc.name) }}
+                          />
+                        }
+                      >
+                        <ExternalLink className="mr-1 size-3" /> Open full
+                        detail view
+                      </Button>
+                    </div>
+                  </div>
+                </TabsContent>
+                <TabsContent value="logs" className="h-full">
+                  <ProcessLogs
+                    name={proc.name}
+                    isMonitored={proc.isMonitored}
+                    flushProcessId={proc.id}
+                  />
+                </TabsContent>
+                <TabsContent value="metrics" className="p-4">
+                  <MetricsTab proc={proc} />
+                </TabsContent>
+                <TabsContent value="environment" className="p-4">
+                  <EmptyState
+                    icon={Globe}
+                    title="No environment information"
+                    description="Environment variables and deployment information will appear here."
+                  />
+                </TabsContent>
+              </div>
+            </Tabs>
+          </>
         )}
       </div>
 
-      <div className="rounded-lg border border-border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10">
-                <Checkbox
-                  checked={allSelected}
-                  indeterminate={someSelected}
-                  onCheckedChange={toggleAll}
-                  aria-label="Select all"
-                />
-              </TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">CPU</TableHead>
-              <TableHead className="text-right">Memory</TableHead>
-              <TableHead className="text-right">Uptime</TableHead>
-              <TableHead className="text-right">Restarts</TableHead>
-              <TableHead className="text-right">PID</TableHead>
-              <TableHead className="w-24">Monitor</TableHead>
-              <TableHead className="w-32" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.length === 0 && (
-              <TableRow>
-                <TableCell
-                  colSpan={10}
-                  className="py-8 text-center text-muted-foreground"
-                >
-                  {processes.length === 0
-                    ? "No processes found. Is PM2 running?"
-                    : "No results match your search."}
-                </TableCell>
-              </TableRow>
-            )}
-            {filtered.map((proc) => (
-              <TableRow key={proc.name}>
-                <TableCell>
-                  <Checkbox
-                    checked={selected.has(proc.name)}
-                    onCheckedChange={() => toggleOne(proc.name)}
-                    aria-label={`Select ${proc.name}`}
-                  />
-                </TableCell>
-                <TableCell>
-                  <Link
-                    to="/processes/$id"
-                    params={{ id: String(proc.id ?? proc.name) }}
-                    className="flex items-center gap-1 font-medium hover:underline"
-                  >
-                    {proc.name}
-                    <ChevronRight className="size-3 text-muted-foreground" />
-                  </Link>
-                    {proc.isOrphan && (
-                      <Badge variant="outline" className="ml-2 text-xs">
-                        orphan
-                      </Badge>
-                    )}
-                    <button
-                      type="button"
-                      className="ml-1 text-muted-foreground hover:text-foreground"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleMuteToggle(proc.name, proc.alertsEnabled);
-                      }}
-                      title={proc.alertsEnabled ? "Mute alerts" : "Enable alerts"}
-                    >
-                      {proc.alertsEnabled ? (
-                        <Bell className="size-3" />
-                      ) : (
-                        <BellOff className="size-3" />
-                      )}
-                    </button>
-                </TableCell>
-                <TableCell>
-                  <StatusBadge status={proc.status} />
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {proc.cpu.toFixed(1)}%
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatBytes(proc.memory)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatUptime(proc.uptime)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {proc.restarts}
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-muted-foreground">
-                  {proc.pid ?? "-"}
-                </TableCell>
-                <TableCell>
-                  <Switch
-                    checked={proc.isMonitored}
-                    onCheckedChange={() =>
-                      handleToggleMon(proc.name, proc.isMonitored)
-                    }
-                    aria-label={`Toggle monitoring for ${proc.name}`}
-                  />
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1">
-                    {proc.id != null && proc.status !== "stopped" && (
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-7"
-                          onClick={() => setConfirmAction({ type: "restart", procId: proc.id!, name: proc.name })}
-                          title="Restart"
-                        >
-                          <RotateCcw className="size-3" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-7"
-                          onClick={() => setConfirmAction({ type: "stop", procId: proc.id!, name: proc.name })}
-                          title="Stop"
-                        >
-                          <PowerOff className="size-3" />
-                        </Button>
-                      </>
-                    )}
-                    {proc.id != null && proc.status === "stopped" && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7"
-                        onClick={() => handleStart(proc.id!, proc.name)}
-                        title="Start"
-                      >
-                        <Power className="size-3" />
-                      </Button>
-                    )}
-                    {proc.id != null && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7"
-                        onClick={() => handleFlush(proc.id!, proc.name)}
-                        title="Flush logs"
-                      >
-                        <Eraser className="size-3" />
-                      </Button>
-                    )}
-                    {proc.id != null && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 text-destructive hover:text-destructive"
-                        onClick={() => setConfirmAction({ type: "delete", procId: proc.id!, name: proc.name })}
-                        title="Delete"
-                      >
-                        <Trash2 className="size-3" />
-                      </Button>
-                    )}
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-
-      <AlertDialog open={confirmAction !== null} onOpenChange={(v) => !v && setConfirmAction(null)}>
+      <AlertDialog
+        open={confirmAction !== null}
+        onOpenChange={(v) => !v && setConfirmAction(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              Confirm {confirmAction?.type}
-            </AlertDialogTitle>
+            <AlertDialogTitle>Confirm {confirmAction?.type}</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to {confirmAction?.type}{" "}
-              <span className="font-medium text-foreground">{confirmAction?.name}</span>?
+              <span className="font-medium text-foreground">
+                {confirmAction?.name}
+              </span>
+              ?
               {confirmAction?.type === "delete" && " This cannot be undone."}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -475,20 +1163,9 @@ function ProcessListPage() {
               onClick={() => {
                 if (!confirmAction) return;
                 const { type, procId, name } = confirmAction;
-                if (procId === 0) {
-                  // Bulk action
-                  const fn = type === "restart" ? handleRestart : type === "stop" ? handleStop : handleDelete;
-                  selected.forEach((selName) => {
-                    const p = processes.find((x) => x.name === selName);
-                    if (p?.id != null && (type !== "stop" || p.status !== "stopped")) {
-                      fn(p.id, p.name);
-                    }
-                  });
-                } else {
-                  if (type === "restart") handleRestart(procId, name);
-                  else if (type === "stop") handleStop(procId, name);
-                  else if (type === "delete") handleDelete(procId, name);
-                }
+                if (type === "restart") handleRestart(procId, name);
+                else if (type === "stop") handleStop(procId, name);
+                else if (type === "delete") handleDelete(procId, name);
                 setConfirmAction(null);
               }}
             >

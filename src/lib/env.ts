@@ -33,6 +33,9 @@ const envSchema = z.object({
     .default(14 * 24 * 60 * 60 * 1000),
   SQLITE_DB_PATH: z.string().default("./data/pm2-process-web-ui.db"),
   DEPLOY_BASE_DIR: z.string().default("./apps"),
+  OPS_APPS_PATH: z.string().default("/mnt/sdc1/www"),
+  GITLAB_URL: z.string().default("https://gitlab.com"),
+  GITLAB_TOKEN: z.string().default(""),
 });
 
 export type Env = z.infer<typeof envSchema>;

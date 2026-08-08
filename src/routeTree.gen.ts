@@ -15,10 +15,13 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as ApiEventsRouteImport } from './routes/api/events'
+import { Route as AuthenticatedOpsIndexRouteImport } from './routes/_authenticated/ops/index'
+import { Route as AuthenticatedOpsAppNameRouteImport } from './routes/_authenticated/ops/$appName'
 import { Route as AuthenticatedProcessesIndexRouteImport } from './routes/_authenticated/processes/index'
 import { Route as AuthenticatedProcessesIdRouteImport } from './routes/_authenticated/processes/$id'
 import { Route as ApiAlertingSettingsRouteImport } from './routes/api/alerting.settings'
 import { Route as ApiAlertingTestRouteImport } from './routes/api/alerting.test'
+import { Route as ApiOpsConfigRouteImport } from './routes/api/ops/config'
 import { Route as ApiSettingsGeneralRouteImport } from './routes/api/settings.general'
 
 const IndexRoute = IndexRouteImport.update({
@@ -50,6 +53,16 @@ const ApiEventsRoute = ApiEventsRouteImport.update({
   path: '/api/events',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedOpsIndexRoute = AuthenticatedOpsIndexRouteImport.update({
+  id: '/ops/',
+  path: '/ops/',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedOpsAppNameRoute = AuthenticatedOpsAppNameRouteImport.update({
+  id: '/ops/$appName',
+  path: '/ops/$appName',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedProcessesIndexRoute =
   AuthenticatedProcessesIndexRouteImport.update({
     id: '/processes/',
@@ -72,6 +85,11 @@ const ApiAlertingTestRoute = ApiAlertingTestRouteImport.update({
   path: '/api/alerting/test',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiOpsConfigRoute = ApiOpsConfigRouteImport.update({
+  id: '/api/ops/config',
+  path: '/api/ops/config',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSettingsGeneralRoute = ApiSettingsGeneralRouteImport.update({
   id: '/api/settings/general',
   path: '/api/settings/general',
@@ -84,10 +102,13 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/api/events': typeof ApiEventsRoute
+  '/ops/$appName': typeof AuthenticatedOpsAppNameRoute
   '/processes/$id': typeof AuthenticatedProcessesIdRoute
   '/api/alerting/settings': typeof ApiAlertingSettingsRoute
   '/api/alerting/test': typeof ApiAlertingTestRoute
+  '/api/ops/config': typeof ApiOpsConfigRoute
   '/api/settings/general': typeof ApiSettingsGeneralRoute
+  '/ops/': typeof AuthenticatedOpsIndexRoute
   '/processes/': typeof AuthenticatedProcessesIndexRoute
 }
 export interface FileRoutesByTo {
@@ -96,10 +117,13 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/api/events': typeof ApiEventsRoute
+  '/ops/$appName': typeof AuthenticatedOpsAppNameRoute
   '/processes/$id': typeof AuthenticatedProcessesIdRoute
   '/api/alerting/settings': typeof ApiAlertingSettingsRoute
   '/api/alerting/test': typeof ApiAlertingTestRoute
+  '/api/ops/config': typeof ApiOpsConfigRoute
   '/api/settings/general': typeof ApiSettingsGeneralRoute
+  '/ops': typeof AuthenticatedOpsIndexRoute
   '/processes': typeof AuthenticatedProcessesIndexRoute
 }
 export interface FileRoutesById {
@@ -110,10 +134,13 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/api/events': typeof ApiEventsRoute
+  '/_authenticated/ops/$appName': typeof AuthenticatedOpsAppNameRoute
   '/_authenticated/processes/$id': typeof AuthenticatedProcessesIdRoute
   '/api/alerting/settings': typeof ApiAlertingSettingsRoute
   '/api/alerting/test': typeof ApiAlertingTestRoute
+  '/api/ops/config': typeof ApiOpsConfigRoute
   '/api/settings/general': typeof ApiSettingsGeneralRoute
+  '/_authenticated/ops/': typeof AuthenticatedOpsIndexRoute
   '/_authenticated/processes/': typeof AuthenticatedProcessesIndexRoute
 }
 export interface FileRouteTypes {
@@ -124,10 +151,13 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/settings'
     | '/api/events'
+    | '/ops/$appName'
     | '/processes/$id'
     | '/api/alerting/settings'
     | '/api/alerting/test'
+    | '/api/ops/config'
     | '/api/settings/general'
+    | '/ops/'
     | '/processes/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -136,10 +166,13 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/settings'
     | '/api/events'
+    | '/ops/$appName'
     | '/processes/$id'
     | '/api/alerting/settings'
     | '/api/alerting/test'
+    | '/api/ops/config'
     | '/api/settings/general'
+    | '/ops'
     | '/processes'
   id:
     | '__root__'
@@ -149,10 +182,13 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/settings'
     | '/api/events'
+    | '/_authenticated/ops/$appName'
     | '/_authenticated/processes/$id'
     | '/api/alerting/settings'
     | '/api/alerting/test'
+    | '/api/ops/config'
     | '/api/settings/general'
+    | '/_authenticated/ops/'
     | '/_authenticated/processes/'
   fileRoutesById: FileRoutesById
 }
@@ -163,6 +199,7 @@ export interface RootRouteChildren {
   ApiEventsRoute: typeof ApiEventsRoute
   ApiAlertingSettingsRoute: typeof ApiAlertingSettingsRoute
   ApiAlertingTestRoute: typeof ApiAlertingTestRoute
+  ApiOpsConfigRoute: typeof ApiOpsConfigRoute
   ApiSettingsGeneralRoute: typeof ApiSettingsGeneralRoute
 }
 
@@ -210,6 +247,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiEventsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/ops/': {
+      id: '/_authenticated/ops/'
+      path: '/ops'
+      fullPath: '/ops/'
+      preLoaderRoute: typeof AuthenticatedOpsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/ops/$appName': {
+      id: '/_authenticated/ops/$appName'
+      path: '/ops/$appName'
+      fullPath: '/ops/$appName'
+      preLoaderRoute: typeof AuthenticatedOpsAppNameRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/processes/': {
       id: '/_authenticated/processes/'
       path: '/processes'
@@ -238,6 +289,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAlertingTestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/ops/config': {
+      id: '/api/ops/config'
+      path: '/api/ops/config'
+      fullPath: '/api/ops/config'
+      preLoaderRoute: typeof ApiOpsConfigRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/settings/general': {
       id: '/api/settings/general'
       path: '/api/settings/general'
@@ -251,14 +309,18 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
+  AuthenticatedOpsAppNameRoute: typeof AuthenticatedOpsAppNameRoute
   AuthenticatedProcessesIdRoute: typeof AuthenticatedProcessesIdRoute
+  AuthenticatedOpsIndexRoute: typeof AuthenticatedOpsIndexRoute
   AuthenticatedProcessesIndexRoute: typeof AuthenticatedProcessesIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+  AuthenticatedOpsAppNameRoute: AuthenticatedOpsAppNameRoute,
   AuthenticatedProcessesIdRoute: AuthenticatedProcessesIdRoute,
+  AuthenticatedOpsIndexRoute: AuthenticatedOpsIndexRoute,
   AuthenticatedProcessesIndexRoute: AuthenticatedProcessesIndexRoute,
 }
 
@@ -273,6 +335,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiEventsRoute: ApiEventsRoute,
   ApiAlertingSettingsRoute: ApiAlertingSettingsRoute,
   ApiAlertingTestRoute: ApiAlertingTestRoute,
+  ApiOpsConfigRoute: ApiOpsConfigRoute,
   ApiSettingsGeneralRoute: ApiSettingsGeneralRoute,
 }
 export const routeTree = rootRouteImport

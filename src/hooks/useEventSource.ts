@@ -25,79 +25,187 @@ interface ProcessInfo {
   alertsEnabled: boolean;
 }
 
+interface OpsProcessInfo {
+  name: string;
+  pid: number | null;
+  status: string;
+  cpu: number;
+  memory: number;
+  uptime: number | null;
+  restarts: number;
+}
+
+interface OpsEnvironment {
+  name: string;
+  color: "blue" | "green";
+  active: boolean;
+  runtime: OpsProcessInfo | null;
+  health: { ok: boolean; responseTimeMs: number } | null;
+  commit: { shortHash: string; branch: string; author: string; message: string; date: string } | null;
+}
+
+interface OpsApp {
+  app: { name: string; description: string; appPath: string };
+  dirName: string;
+  blue: OpsEnvironment;
+  green: OpsEnvironment;
+  current: "blue" | "green" | "unknown";
+  gitlabPipeline: {
+    id: number; status: string; sha: string; webUrl: string;
+    duration: number | null; author: string; createdAt: string;
+  } | null;
+  gitlabProject: { name: string; webUrl: string } | null;
+  health: { ok: boolean; responseTimeMs: number } | null;
+  lastRelease: { commit: { shortHash: string }; deployedAt: number; environment: string } | null;
+  pipelineTime: string | null;
+  releases: {
+    commit: string; branch: string; environment: string;
+    deployedAt: number; pipelineStatus: string | null;
+    author: string; date: string; message: string;
+  }[];
+  drift: { pipelineSha: string; runningSha: string; behind: string } | null;
+  collectedAt: number;
+}
+
 interface EventStore {
   processes: ProcessInfo[];
   connected: boolean;
   host: HostInfo | null;
+  opsApps: OpsApp[];
+  opsUnconfigured: { dirName: string; appPath: string }[];
   lastUpdate: number;
   setProcesses: (processes: ProcessInfo[]) => void;
   setConnected: (connected: boolean) => void;
   setHost: (host: HostInfo) => void;
+  setOpsApps: (apps: OpsApp[]) => void;
+  setOpsUnconfigured: (apps: { dirName: string; appPath: string }[]) => void;
 }
 
 export const useEventStore = create<EventStore>((set) => ({
   processes: [],
   connected: false,
   host: null,
+  opsApps: [],
+  opsUnconfigured: [],
   lastUpdate: 0,
   setProcesses: (processes) => set({ processes, lastUpdate: Date.now() }),
   setConnected: (connected) => set({ connected }),
   setHost: (host) => set({ host }),
+  setOpsApps: (opsApps) => set({ opsApps }),
+  setOpsUnconfigured: (opsUnconfigured) => set({ opsUnconfigured }),
 }));
+
+let globalEventSource: EventSource | null = null;
+let globalReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let listenerCount = 0;
+
+function connectGlobal() {
+  if (globalEventSource) return;
+
+  const es = new EventSource(apiUrl("/api/events"));
+  globalEventSource = es;
+
+  es.onopen = () => useEventStore.getState().setConnected(true);
+
+  es.addEventListener("processes", (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      useEventStore.getState().setProcesses(data.items || []);
+      if (data.host) useEventStore.getState().setHost(data.host);
+    } catch {}
+  });
+
+  es.addEventListener("host", (event) => {
+    try {
+      useEventStore.getState().setHost(JSON.parse(event.data));
+    } catch {}
+  });
+
+  es.addEventListener("ops:applications", (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      console.log("[SSE-client] Received ops:applications,", data.length, "apps");
+      useEventStore.getState().setOpsApps(data);
+    } catch (e) {
+      console.error("[SSE-client] Failed to parse ops:applications:", e);
+    }
+  });
+
+  es.addEventListener("ops:unconfigured", (event) => {
+    try {
+      useEventStore.getState().setOpsUnconfigured(JSON.parse(event.data));
+    } catch {}
+  });
+
+  es.addEventListener("ops:heartbeat", (event) => {
+    console.log("[SSE-client] SSE ops heartbeat received");
+  });
+
+  es.addEventListener("logs", () => {});
+
+  es.onerror = () => {
+    useEventStore.getState().setConnected(false);
+    es.close();
+    globalEventSource = null;
+    globalReconnectTimer = setTimeout(() => connectGlobal(), 3000);
+  };
+}
 
 export function useEventSource() {
   const setProcesses = useEventStore((s) => s.setProcesses);
   const setConnected = useEventStore((s) => s.setConnected);
   const setHost = useEventStore((s) => s.setHost);
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const reconnectRef = useRef<NodeJS.Timeout | null>(null);
-
-  const connect = useCallback(() => {
-    const es = new EventSource(apiUrl("/api/events"));
-    eventSourceRef.current = es;
-
-    es.onopen = () => setConnected(true);
-
-    es.addEventListener("processes", (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        setProcesses(data.items || []);
-        if (data.host) setHost(data.host);
-      } catch {}
-    });
-
-    es.addEventListener("host", (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        setHost(data);
-      } catch {}
-    });
-
-    es.addEventListener("logs", () => {});
-
-    es.onerror = () => {
-      setConnected(false);
-      es.close();
-      eventSourceRef.current = null;
-      reconnectRef.current = setTimeout(() => connect(), 3000);
-    };
-  }, [setProcesses, setConnected, setHost]);
+  const setOpsApps = useEventStore((s) => s.setOpsApps);
 
   useEffect(() => {
-    connect();
+    listenerCount++;
+    connectGlobal();
+
     return () => {
-      eventSourceRef.current?.close();
-      if (reconnectRef.current) clearTimeout(reconnectRef.current);
+      listenerCount--;
+      if (listenerCount <= 0 && globalEventSource) {
+        globalEventSource.close();
+        globalEventSource = null;
+        if (globalReconnectTimer) clearTimeout(globalReconnectTimer);
+      }
     };
-  }, [connect]);
+  }, []);
 
   return useEventStore((s) => s.processes);
 }
 
 export function useEventSourceHost() {
+  useEffect(() => {
+    listenerCount++;
+    connectGlobal();
+    return () => { listenerCount--; };
+  }, []);
   return useEventStore((s) => s.host);
 }
 
 export function useEventSourceConnection() {
+  useEffect(() => {
+    listenerCount++;
+    connectGlobal();
+    return () => { listenerCount--; };
+  }, []);
   return useEventStore((s) => s.connected);
+}
+
+export function useOpsSource() {
+  useEffect(() => {
+    listenerCount++;
+    connectGlobal();
+    return () => { listenerCount--; };
+  }, []);
+  return useEventStore((s) => s.opsApps);
+}
+
+export function useOpsUnconfigured() {
+  useEffect(() => {
+    listenerCount++;
+    connectGlobal();
+    return () => { listenerCount--; };
+  }, []);
+  return useEventStore((s) => s.opsUnconfigured);
 }

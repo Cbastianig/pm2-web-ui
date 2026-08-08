@@ -81,3 +81,18 @@ export const hostMetrics = sqliteTable("host_metrics", {
   diskUsed: real("disk_used").default(0),
   diskTotal: real("disk_total").default(0),
 });
+
+export const releaseHistory = sqliteTable("release_history", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  appName: text("app_name").notNull(),
+  commit: text('"commit"').notNull(),
+  branch: text("branch").notNull(),
+  pipelineId: integer("pipeline_id"),
+  pipelineStatus: text("pipeline_status"),
+  pipelineDuration: integer("pipeline_duration"),
+  author: text("author").notNull().default(""),
+  date: text("date").notNull(),
+  environment: text("environment").notNull(),
+  deployedAt: integer("deployed_at").notNull(),
+  message: text("message").default(""),
+});

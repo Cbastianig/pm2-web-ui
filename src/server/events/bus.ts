@@ -9,26 +9,12 @@ export interface ProcessEvent {
   };
 }
 
-export interface ProcessUpdateEvent {
-  type: "process-update";
-  data: any;
-}
-
 export interface LogEvent {
   type: "logs";
   data: { text: string; level: string; processName: string };
 }
 
-export interface DeployEvent {
-  type: "deploy";
-  data: { deploymentId: string; stage: string; line: string; status: string };
-}
-
-export type AppEvent =
-  | ProcessEvent
-  | ProcessUpdateEvent
-  | LogEvent
-  | DeployEvent;
+export type AppEvent = ProcessEvent | LogEvent;
 
 export const eventBus = new EventEmitter();
 eventBus.setMaxListeners(200);

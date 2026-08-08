@@ -119,5 +119,22 @@ export function initDb() {
     )
   `);
 
+  sqlite(`
+    CREATE TABLE IF NOT EXISTS release_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      app_name TEXT NOT NULL,
+      "commit" TEXT NOT NULL,
+      branch TEXT NOT NULL,
+      pipeline_id INTEGER,
+      pipeline_status TEXT,
+      pipeline_duration INTEGER,
+      author TEXT NOT NULL DEFAULT '',
+      date TEXT NOT NULL,
+      environment TEXT NOT NULL,
+      deployed_at INTEGER NOT NULL,
+      message TEXT DEFAULT ''
+    )
+  `);
+
   return db;
 }

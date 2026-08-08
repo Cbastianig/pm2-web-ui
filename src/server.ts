@@ -2,10 +2,12 @@ import handler, { createServerEntry } from "@tanstack/react-start/server-entry";
 import { initDb } from "@/server/storage/client";
 import { startLogBus } from "@/server/events/logBus";
 import { initAlerting } from "@/server/alerting";
+import { startAppManager } from "@/server/ops";
 
 initDb();
 startLogBus();
 initAlerting();
+startAppManager();
 
 import { getDb } from "@/server/storage/client";
 import { logEntries, processMetrics, hostMetrics, monitoring as monTable } from "@/server/storage/schema";
