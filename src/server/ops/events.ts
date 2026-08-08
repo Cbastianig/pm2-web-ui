@@ -1,4 +1,4 @@
-import type { ApplicationSnapshot } from "../types";
+import type { ApplicationSnapshot } from "./types";
 
 export interface OpsApplicationsEvent {
   type: "ops:applications";
@@ -21,6 +21,4 @@ export interface OpsLogEvent {
 }
 
 export type OpsEvent =
-  | OpsApplicationsEvent
-  | OpsApplicationDetailEvent
-  | OpsLogEvent;
+  OpsApplicationsEvent | OpsApplicationDetailEvent | OpsLogEvent;

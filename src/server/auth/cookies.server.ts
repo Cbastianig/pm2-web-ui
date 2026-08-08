@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { readEnv } from "@/lib/env";
 import { setResponseHeader, getRequest } from "@tanstack/react-start/server";
 
@@ -12,8 +11,10 @@ export function setSessionCookie(token: string): void {
   const request = getRequest();
   let secure = secureMode === "always";
   if (secureMode === "auto") {
-    const proto =
-      request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+    const proto = request.headers
+      .get("x-forwarded-proto")
+      ?.split(",")[0]
+      ?.trim();
     secure = trustProxy ? proto === "https" : request.url.startsWith("https:");
   }
 
@@ -28,13 +29,13 @@ export function setSessionCookie(token: string): void {
       `Max-Age=${Math.floor(ttlMs / 1000)}`,
     ]
       .filter(Boolean)
-      .join("; ")
+      .join("; "),
   );
 }
 
 export function clearSessionCookie(): void {
   setResponseHeader(
     "Set-Cookie",
-    `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`
+    `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`,
   );
 }

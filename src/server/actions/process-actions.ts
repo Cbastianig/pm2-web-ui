@@ -11,8 +11,12 @@ import {
   triggerProcessAction,
   readLogLinesByName,
 } from "@/server/pm2";
+import { authMiddleware } from "@/server/auth/middleware";
+
+const auth = () => [authMiddleware];
 
 export const restartProcessFn = createServerFn({ method: "POST" })
+  .middleware(auth())
   .validator(z.object({ processId: z.union([z.string(), z.number()]) }))
   .handler(async ({ data }) => {
     await restartProcess(data.processId);
@@ -20,6 +24,7 @@ export const restartProcessFn = createServerFn({ method: "POST" })
   });
 
 export const stopProcessFn = createServerFn({ method: "POST" })
+  .middleware(auth())
   .validator(z.object({ processId: z.union([z.string(), z.number()]) }))
   .handler(async ({ data }) => {
     await stopProcess(data.processId);
@@ -27,6 +32,7 @@ export const stopProcessFn = createServerFn({ method: "POST" })
   });
 
 export const startProcessFn = createServerFn({ method: "POST" })
+  .middleware(auth())
   .validator(z.object({ processId: z.union([z.string(), z.number()]) }))
   .handler(async ({ data }) => {
     await startStoppedProcess(data.processId);
@@ -34,6 +40,7 @@ export const startProcessFn = createServerFn({ method: "POST" })
   });
 
 export const deleteProcessFn = createServerFn({ method: "POST" })
+  .middleware(auth())
   .validator(
     z.object({
       processId: z.union([z.string(), z.number()]),
@@ -46,6 +53,7 @@ export const deleteProcessFn = createServerFn({ method: "POST" })
   });
 
 export const flushLogsFn = createServerFn({ method: "POST" })
+  .middleware(auth())
   .validator(z.object({ processId: z.union([z.string(), z.number()]) }))
   .handler(async ({ data }) => {
     await flushLogs(data.processId);
@@ -53,18 +61,21 @@ export const flushLogsFn = createServerFn({ method: "POST" })
   });
 
 export const getProcessDetailsFn = createServerFn({ method: "GET" })
+  .middleware(auth())
   .validator(z.object({ processId: z.union([z.string(), z.number()]) }))
   .handler(async ({ data }) => {
     return await loadProcessDetails(data.processId);
   });
 
 export const getProcessActionsFn = createServerFn({ method: "GET" })
+  .middleware(auth())
   .validator(z.object({ processId: z.union([z.string(), z.number()]) }))
   .handler(async ({ data }) => {
     return await getProcessActions(data.processId);
   });
 
 export const triggerActionFn = createServerFn({ method: "POST" })
+  .middleware(auth())
   .validator(
     z.object({
       processId: z.union([z.string(), z.number()]),
@@ -78,6 +89,7 @@ export const triggerActionFn = createServerFn({ method: "POST" })
   });
 
 export const readLogsFn = createServerFn({ method: "GET" })
+  .middleware(auth())
   .validator(z.object({ pm2Name: z.string() }))
   .handler(async ({ data }) => {
     const lines = await readLogLinesByName(data.pm2Name);

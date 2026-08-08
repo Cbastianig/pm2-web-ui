@@ -16,16 +16,26 @@ export function detectLogLevel(text: string): string {
   if (/"level"\s*:\s*"(?:debug|trace|verbose)"/i.test(text)) return "debug";
 
   // 2. Bracket notation [LEVEL] / (LEVEL)
-  if (/\[(?:error|fatal|crit(?:ical)?)\]|\((?:error|fatal|crit(?:ical)?)\)/i.test(text)) return "error";
+  if (
+    /\[(?:error|fatal|crit(?:ical)?)\]|\((?:error|fatal|crit(?:ical)?)\)/i.test(
+      text,
+    )
+  )
+    return "error";
   if (/\[warn(?:ing)?\]|\(warn(?:ing)?\)/i.test(text)) return "warn";
   if (/\[info\]|\(info\)/i.test(text)) return "info";
-  if (/\[(?:debug|trace|verbose)\]|\((?:debug|trace|verbose)\)/i.test(text)) return "debug";
+  if (/\[(?:debug|trace|verbose)\]|\((?:debug|trace|verbose)\)/i.test(text))
+    return "debug";
 
   // 3. Uppercase standalone label (anywhere in the line after whitespace/pipe)
-  if (/(?:^|[\s|])(?:ERROR|FATAL|CRITICAL|EXCEPTION|CRIT)(?:[:\s|]|$)/.test(text)) return "error";
+  if (
+    /(?:^|[\s|])(?:ERROR|FATAL|CRITICAL|EXCEPTION|CRIT)(?:[:\s|]|$)/.test(text)
+  )
+    return "error";
   if (/(?:^|[\s|])WARN(?:ING)?(?:[:\s|]|$)/.test(text)) return "warn";
   if (/(?:^|[\s|])INFO(?:[:\s|]|$)/.test(text)) return "info";
-  if (/(?:^|[\s|])(?:DEBUG|TRACE|VERBOSE)(?:[:\s|]|$)/.test(text)) return "debug";
+  if (/(?:^|[\s|])(?:DEBUG|TRACE|VERBOSE)(?:[:\s|]|$)/.test(text))
+    return "debug";
 
   return "";
 }
@@ -40,11 +50,10 @@ export async function startLogBus() {
     await pm2Connect();
     const { bus } = await new Promise<{
       bus: NodeJS.EventEmitter;
-      busSocket: NodeJS.EventEmitter;
     }>((resolve, reject) => {
-      pm2.launchBus((err, bus, busSocket) => {
+      pm2.launchBus((err: Error | null, bus) => {
         if (err) reject(err);
-        else resolve({ bus, busSocket });
+        else resolve({ bus });
       });
     });
 
@@ -74,13 +83,15 @@ export async function startLogBus() {
             const loggedAt = ts
               ? new Date(ts.replace(" ", "T")).getTime() || at
               : at;
-            db.insert(logEntries).values({
-              monitorId: rows[0]!.id,
-              loggedAt,
-              logLevel: level,
-              log: JSON.stringify({ lines: [text], raw: text }),
-              raw: text,
-            }).run();
+            db.insert(logEntries)
+              .values({
+                monitorId: rows[0]!.id,
+                loggedAt,
+                logLevel: level,
+                log: JSON.stringify({ lines: [text], raw: text }),
+                raw: text,
+              })
+              .run();
           }
         } catch {
           // never let storage errors affect streaming

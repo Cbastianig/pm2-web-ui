@@ -1,11 +1,35 @@
-import { createFileRoute, Outlet, Link, redirect, useNavigate } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Outlet,
+  Link,
+  redirect,
+  useNavigate,
+} from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { logoutFn } from "@/server/auth/functions";
 import { checkSessionFn } from "@/server/auth/functions";
-import { useEventSourceHost, useEventSourceConnection } from "@/hooks/useEventSource";
-import { Activity, Settings, Rocket, Menu, X, Cpu, HardDrive, Disc, LayoutDashboard, ChevronsLeft, ChevronsRight, LogOut } from "lucide-react";
+import {
+  useEventSourceHost,
+  useEventSourceConnection,
+} from "@/hooks/useEventSource";
+import {
+  Activity,
+  Settings,
+  Rocket,
+  Menu,
+  X,
+  Cpu,
+  HardDrive,
+  Disc,
+  LayoutDashboard,
+  ChevronsLeft,
+  ChevronsRight,
+  LogOut,
+  Sparkles,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { AppLogo } from "@/components/app-logo";
+import { StatusDot } from "@/components/status-dot";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
@@ -28,26 +52,62 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024).toFixed(1)} KB`;
 }
 
+function MetricChip({
+  icon: Icon,
+  value,
+  color = "default",
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  value: string;
+  color?: "default" | "brand" | "success" | "warning";
+}) {
+  const colorClass = {
+    default: "text-muted-foreground",
+    brand: "text-[oklch(0.85_0.18_255)]",
+    success: "text-[oklch(0.85_0.19_155)]",
+    warning: "text-[oklch(0.88_0.17_75)]",
+  }[color];
+
+  return (
+    <div className="group flex items-center gap-1.5 rounded-md border border-border/40 bg-card/30 px-2 py-1 text-xs transition-colors hover:border-border hover:bg-card/60">
+      <Icon className={cn("size-3", colorClass)} />
+      <span className="font-medium tabular-nums text-foreground/90">
+        {value}
+      </span>
+    </div>
+  );
+}
+
 function HostMetricsBar() {
   const host = useEventSourceHost();
 
   if (!host) return null;
 
+  const cpuColor =
+    host.cpuPercent > 80
+      ? "warning"
+      : host.cpuPercent > 50
+        ? "brand"
+        : "success";
+
   return (
-    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-      <span className="flex items-center gap-1">
-        <Cpu className="size-3" />
-        {host.cpuPercent.toFixed(0)}%
-      </span>
-      <span className="flex items-center gap-1">
-        <HardDrive className="size-3" />
-        {formatBytes(host.ramUsed)} / {formatBytes(host.ramTotal)}
-      </span>
+    <div className="flex items-center gap-1.5">
+      <MetricChip
+        icon={Cpu}
+        value={`${host.cpuPercent.toFixed(0)}%`}
+        color={cpuColor}
+      />
+      <MetricChip
+        icon={HardDrive}
+        value={`${formatBytes(host.ramUsed)} / ${formatBytes(host.ramTotal)}`}
+        color="brand"
+      />
       {host.diskTotal > 0 && (
-        <span className="flex items-center gap-1">
-          <Disc className="size-3" />
-          {formatBytes(host.diskUsed)} / {formatBytes(host.diskTotal)}
-        </span>
+        <MetricChip
+          icon={Disc}
+          value={`${formatBytes(host.diskUsed)} / ${formatBytes(host.diskTotal)}`}
+          color="default"
+        />
       )}
     </div>
   );
@@ -57,12 +117,14 @@ function SidebarLink({
   to,
   icon: Icon,
   label,
+  badge,
   collapsed,
   onNavigate,
 }: {
   to: string;
   icon: typeof Activity;
   label: string;
+  badge?: string;
   collapsed: boolean;
   onNavigate: () => void;
 }) {
@@ -72,13 +134,43 @@ function SidebarLink({
       title={collapsed ? label : undefined}
       onClick={onNavigate}
       className={cn(
-        "flex items-center gap-2 rounded-md py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground [&.active]:bg-accent [&.active]:text-accent-foreground",
-        collapsed ? "justify-center px-0" : "px-3",
+        "group relative flex items-center gap-2.5 rounded-lg py-2 text-sm font-medium text-muted-foreground transition-all duration-200",
+        "hover:bg-accent/60 hover:text-foreground",
+        collapsed ? "justify-center px-0" : "px-2.5",
+        "[&.active]:bg-gradient-to-r [&.active]:from-[oklch(0.6_0.22_264/0.18)] [&.active]:to-[oklch(0.6_0.22_264/0.04)]",
+        "[&.active]:text-foreground [&.active]:shadow-[inset_1px_0_0_0_oklch(0.72_0.18_255/0.6)]",
       )}
     >
-      <Icon className="size-4 shrink-0" />
-      {!collapsed && <span>{label}</span>}
+      <Icon className="size-4 shrink-0 transition-transform group-hover:scale-110 [&.active]:text-[oklch(0.78_0.18_255)]" />
+      {!collapsed && <span className="truncate">{label}</span>}
+      {!collapsed && badge && (
+        <span className="ml-auto rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+          {badge}
+        </span>
+      )}
     </Link>
+  );
+}
+
+function SidebarSection({
+  label,
+  collapsed,
+  children,
+}: {
+  label: string;
+  collapsed: boolean;
+  children: React.ReactNode;
+}) {
+  if (collapsed) {
+    return <div className="mt-3 space-y-1 first:mt-0">{children}</div>;
+  }
+  return (
+    <div className="mt-3 space-y-1 first:mt-0">
+      <p className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
+        {label}
+      </p>
+      {children}
+    </div>
   );
 }
 
@@ -117,7 +209,7 @@ function AuthLayout() {
     <div className="flex min-h-dvh">
       {/* Mobile trigger */}
       <button
-        className="fixed left-4 top-4 z-50 rounded-md border border-border bg-background p-2 lg:hidden"
+        className="fixed left-4 top-4 z-50 rounded-lg border border-border/60 bg-card/80 p-2 shadow-lg backdrop-blur-md lg:hidden"
         onClick={() => setSidebarOpen(!sidebarOpen)}
         aria-label="Toggle menu"
       >
@@ -127,18 +219,25 @@ function AuthLayout() {
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-border bg-background transition-all duration-200 lg:static lg:translate-x-0",
-          collapsed ? "w-16" : "w-64",
+          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-sidebar-border bg-sidebar/95 transition-all duration-300 ease-out lg:static lg:translate-x-0",
+          "backdrop-blur-xl",
+          collapsed ? "w-[68px]" : "w-64",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <div className="flex items-center justify-between border-b border-border px-3 py-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <Activity className="size-5 shrink-0 text-accent" />
+        <div className="flex items-center justify-between border-b border-sidebar-border/60 px-3 py-3.5">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <AppLogo size={collapsed ? "sm" : "default"} />
             {!collapsed && (
-              <span className="truncate text-sm font-semibold whitespace-nowrap">
-                pm2-process-web-ui
-              </span>
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate text-sm font-semibold tracking-tight">
+                  pm2-process-web-ui
+                </span>
+                <span className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
+                  <Sparkles className="size-2.5" />
+                  v6 dashboard
+                </span>
+              </div>
             )}
           </div>
           <Button
@@ -149,89 +248,107 @@ function AuthLayout() {
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {collapsed ? <ChevronsRight className="size-4" /> : <ChevronsLeft className="size-4" />}
+            {collapsed ? (
+              <ChevronsRight className="size-4" />
+            ) : (
+              <ChevronsLeft className="size-4" />
+            )}
           </Button>
         </div>
 
-        <nav className="flex flex-1 flex-col gap-1 p-3">
-          {!collapsed && (
-            <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Processes
-            </p>
-          )}
-          <SidebarLink
-            to="/dashboard"
-            icon={Activity}
-            label="Dashboard"
-            collapsed={collapsed}
-            onNavigate={() => setSidebarOpen(false)}
-          />
-          <SidebarLink
-            to="/processes"
-            icon={Rocket}
-            label="Process List"
-            collapsed={collapsed}
-            onNavigate={() => setSidebarOpen(false)}
-          />
+        <nav className="flex flex-1 flex-col overflow-y-auto p-3">
+          <SidebarSection label="Processes" collapsed={collapsed}>
+            <SidebarLink
+              to="/dashboard"
+              icon={Activity}
+              label="Dashboard"
+              collapsed={collapsed}
+              onNavigate={() => setSidebarOpen(false)}
+            />
+            <SidebarLink
+              to="/processes"
+              icon={Rocket}
+              label="Process List"
+              collapsed={collapsed}
+              onNavigate={() => setSidebarOpen(false)}
+            />
+          </SidebarSection>
 
-          {!collapsed && (
-            <p className="mb-1 mt-4 px-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Operations
-            </p>
-          )}
-          <SidebarLink
-            to="/ops"
-            icon={LayoutDashboard}
-            label="Applications"
-            collapsed={collapsed}
-            onNavigate={() => setSidebarOpen(false)}
-          />
+          <SidebarSection label="Operations" collapsed={collapsed}>
+            <SidebarLink
+              to="/ops"
+              icon={LayoutDashboard}
+              label="Applications"
+              collapsed={collapsed}
+              onNavigate={() => setSidebarOpen(false)}
+            />
+          </SidebarSection>
 
           <div className="mt-auto" />
-          <SidebarLink
-            to="/settings"
-            icon={Settings}
-            label="Settings"
-            collapsed={collapsed}
-            onNavigate={() => setSidebarOpen(false)}
-          />
+
+          <SidebarSection label="System" collapsed={collapsed}>
+            <SidebarLink
+              to="/settings"
+              icon={Settings}
+              label="Settings"
+              collapsed={collapsed}
+              onNavigate={() => setSidebarOpen(false)}
+            />
+          </SidebarSection>
         </nav>
 
-        <div className="border-t border-border p-3">
+        <div className="border-t border-sidebar-border/60 p-3">
           <Button
             variant="ghost"
             className={cn(
-              "w-full text-muted-foreground",
+              "w-full text-muted-foreground hover:text-foreground",
               collapsed ? "justify-center px-0" : "justify-start",
             )}
             onClick={handleLogout}
             title={collapsed ? "Sign out" : undefined}
           >
             <LogOut className="size-4 shrink-0" />
-            {!collapsed && "Sign out"}
+            {!collapsed && <span>Sign out</span>}
           </Button>
         </div>
       </aside>
 
       {/* Backdrop for mobile */}
       {sidebarOpen && (
-        <div className="fixed inset-0 z-30 bg-background/80 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <div
+          className="fixed inset-0 z-30 bg-background/60 backdrop-blur-sm lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
       )}
 
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Top bar */}
-        <header className="sticky top-0 z-20 flex items-center gap-4 border-b border-border bg-background px-6 py-2.5">
+        <header className="sticky top-0 z-20 flex items-center gap-4 border-b border-border/60 bg-background/70 px-4 py-2.5 backdrop-blur-xl sm:px-6">
           <HostMetricsBar />
           <div className="ml-auto flex items-center gap-3">
-            <Badge variant={connected ? "default" : "destructive"} className="text-xs">
-              {connected ? "Live" : "Offline"}
-            </Badge>
+            <div
+              className={cn(
+                "flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
+                connected
+                  ? "border-[oklch(0.78_0.19_155/0.4)] bg-[oklch(0.78_0.19_155/0.08)] text-[oklch(0.85_0.19_155)]"
+                  : "border-destructive/40 bg-destructive/10 text-destructive",
+              )}
+            >
+              <StatusDot
+                variant={connected ? "online" : "error"}
+                size="sm"
+                pulse={connected}
+              />
+              <span>{connected ? "Live" : "Offline"}</span>
+            </div>
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto p-6">
-          <Outlet />
+        <main className="flex-1 overflow-auto">
+          <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6 lg:p-8">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

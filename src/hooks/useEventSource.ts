@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect } from "react";
 import { create } from "zustand";
 import { apiUrl } from "@/lib/basePath";
 
@@ -41,7 +41,13 @@ interface OpsEnvironment {
   active: boolean;
   runtime: OpsProcessInfo | null;
   health: { ok: boolean; responseTimeMs: number } | null;
-  commit: { shortHash: string; branch: string; author: string; message: string; date: string } | null;
+  commit: {
+    shortHash: string;
+    branch: string;
+    author: string;
+    message: string;
+    date: string;
+  } | null;
 }
 
 interface OpsApp {
@@ -51,17 +57,31 @@ interface OpsApp {
   green: OpsEnvironment;
   current: "blue" | "green" | "unknown";
   gitlabPipeline: {
-    id: number; status: string; sha: string; webUrl: string;
-    duration: number | null; author: string; createdAt: string;
+    id: number;
+    status: string;
+    sha: string;
+    webUrl: string;
+    duration: number | null;
+    author: string;
+    createdAt: string;
   } | null;
   gitlabProject: { name: string; webUrl: string } | null;
   health: { ok: boolean; responseTimeMs: number } | null;
-  lastRelease: { commit: { shortHash: string }; deployedAt: number; environment: string } | null;
+  lastRelease: {
+    commit: { shortHash: string };
+    deployedAt: number;
+    environment: string;
+  } | null;
   pipelineTime: string | null;
   releases: {
-    commit: string; branch: string; environment: string;
-    deployedAt: number; pipelineStatus: string | null;
-    author: string; date: string; message: string;
+    commit: string;
+    branch: string;
+    environment: string;
+    deployedAt: number;
+    pipelineStatus: string | null;
+    author: string;
+    date: string;
+    message: string;
   }[];
   drift: { pipelineSha: string; runningSha: string; behind: string } | null;
   collectedAt: number;
@@ -124,7 +144,6 @@ function connectGlobal() {
   es.addEventListener("ops:applications", (event) => {
     try {
       const data = JSON.parse(event.data);
-      console.log("[SSE-client] Received ops:applications,", data.length, "apps");
       useEventStore.getState().setOpsApps(data);
     } catch (e) {
       console.error("[SSE-client] Failed to parse ops:applications:", e);
@@ -137,11 +156,7 @@ function connectGlobal() {
     } catch {}
   });
 
-  es.addEventListener("ops:heartbeat", (event) => {
-    console.log("[SSE-client] SSE ops heartbeat received");
-  });
-
-  es.addEventListener("logs", () => {});
+  es.addEventListener("ops:heartbeat", () => {});
 
   es.onerror = () => {
     useEventStore.getState().setConnected(false);
@@ -152,11 +167,6 @@ function connectGlobal() {
 }
 
 export function useEventSource() {
-  const setProcesses = useEventStore((s) => s.setProcesses);
-  const setConnected = useEventStore((s) => s.setConnected);
-  const setHost = useEventStore((s) => s.setHost);
-  const setOpsApps = useEventStore((s) => s.setOpsApps);
-
   useEffect(() => {
     listenerCount++;
     connectGlobal();
@@ -178,7 +188,9 @@ export function useEventSourceHost() {
   useEffect(() => {
     listenerCount++;
     connectGlobal();
-    return () => { listenerCount--; };
+    return () => {
+      listenerCount--;
+    };
   }, []);
   return useEventStore((s) => s.host);
 }
@@ -187,7 +199,9 @@ export function useEventSourceConnection() {
   useEffect(() => {
     listenerCount++;
     connectGlobal();
-    return () => { listenerCount--; };
+    return () => {
+      listenerCount--;
+    };
   }, []);
   return useEventStore((s) => s.connected);
 }
@@ -196,7 +210,9 @@ export function useOpsSource() {
   useEffect(() => {
     listenerCount++;
     connectGlobal();
-    return () => { listenerCount--; };
+    return () => {
+      listenerCount--;
+    };
   }, []);
   return useEventStore((s) => s.opsApps);
 }
@@ -205,7 +221,9 @@ export function useOpsUnconfigured() {
   useEffect(() => {
     listenerCount++;
     connectGlobal();
-    return () => { listenerCount--; };
+    return () => {
+      listenerCount--;
+    };
   }, []);
   return useEventStore((s) => s.opsUnconfigured);
 }

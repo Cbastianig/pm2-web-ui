@@ -1,9 +1,8 @@
 import { createMiddleware, createCsrfMiddleware } from "@tanstack/react-start";
-import { readEnv } from "@/lib/env";
 import { getRequest } from "@tanstack/react-start/server";
-import { purgeExpiredEntries } from "../auth/rateLimit";
+import { purgeExpiredEntries } from "./auth/rateLimit";
 
-const csrfMiddleware = createCsrfMiddleware({
+export const csrfMiddleware = createCsrfMiddleware({
   filter: (ctx) => ctx.handlerType === "serverFn",
 });
 
@@ -14,7 +13,8 @@ export const securityMiddleware = createMiddleware().server(
 
     if (res) {
       const isSecure =
-        request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() === "https";
+        request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ===
+        "https";
 
       const headers: Record<string, string> = {
         "Content-Security-Policy":
@@ -28,18 +28,21 @@ export const securityMiddleware = createMiddleware().server(
       };
 
       if (isSecure) {
-        headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains";
+        headers["Strict-Transport-Security"] =
+          "max-age=63072000; includeSubDomains";
       }
 
+      const responseHeaders = res.response.headers;
+
       for (const [key, value] of Object.entries(headers)) {
-        if (!res.headers.has(key)) {
-          res.headers.set(key, value);
+        if (!responseHeaders.has(key)) {
+          responseHeaders.set(key, value);
         }
       }
     }
 
     return res;
-  }
+  },
 );
 
 setInterval(() => {

@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,14 +61,16 @@ function configToForm(config: any, dirName: string): ConfigForm {
   return {
     name: config.name ?? dirName,
     description: config.description ?? "",
-    projectId: config.git?.projectId != null ? String(config.git.projectId) : "",
+    projectId:
+      config.git?.projectId != null ? String(config.git.projectId) : "",
     branch: config.git?.branch ?? "main",
     blue: config.runtime?.blue ?? "",
     green: config.runtime?.green ?? "",
     currentFile: config.deployment?.currentFile ?? "./current",
     healthEnabled: config.healthcheck?.enabled ?? true,
     healthPath: config.healthcheck?.path ?? "/api/health",
-    healthPort: config.healthcheck?.port != null ? String(config.healthcheck.port) : "",
+    healthPort:
+      config.healthcheck?.port != null ? String(config.healthcheck.port) : "",
     featuresGitlab: config.features?.gitlab ?? true,
     featuresHealthcheck: config.features?.healthcheck ?? true,
     featuresDeployHistory: config.features?.deployHistory ?? true,
@@ -99,7 +108,12 @@ function formToConfig(form: ConfigForm) {
   };
 }
 
-export function OpsConfigDialog({ dirName, open, onOpenChange, onSaved }: OpsConfigDialogProps) {
+export function OpsConfigDialog({
+  dirName,
+  open,
+  onOpenChange,
+  onSaved,
+}: OpsConfigDialogProps) {
   const [form, setForm] = useState<ConfigForm>(emptyForm(dirName));
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -113,7 +127,8 @@ export function OpsConfigDialog({ dirName, open, onOpenChange, onSaved }: OpsCon
     fetch(apiUrl(`/api/ops/config?dirName=${encodeURIComponent(dirName)}`))
       .then((r) => r.json())
       .then((data) => {
-        if (!data.error && data.config) setForm(configToForm(data.config, dirName));
+        if (!data.error && data.config)
+          setForm(configToForm(data.config, dirName));
       })
       .catch(() => toast("Failed to load config"))
       .finally(() => setLoading(false));
@@ -153,8 +168,8 @@ export function OpsConfigDialog({ dirName, open, onOpenChange, onSaved }: OpsCon
         <DialogHeader>
           <DialogTitle>ops.config.json · {dirName}</DialogTitle>
           <DialogDescription>
-            Configure how this project is discovered and deployed. Changes are written
-            to {dirName}/ops.config.json.
+            Configure how this project is discovered and deployed. Changes are
+            written to {dirName}/ops.config.json.
           </DialogDescription>
         </DialogHeader>
 
@@ -166,15 +181,25 @@ export function OpsConfigDialog({ dirName, open, onOpenChange, onSaved }: OpsCon
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="cfg-name">Name</Label>
-              <Input id="cfg-name" value={form.name} onChange={(e) => set("name", e.target.value)} />
+              <Input
+                id="cfg-name"
+                value={form.name}
+                onChange={(e) => set("name", e.target.value)}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="cfg-desc">Description</Label>
-              <Input id="cfg-desc" value={form.description} onChange={(e) => set("description", e.target.value)} />
+              <Input
+                id="cfg-desc"
+                value={form.description}
+                onChange={(e) => set("description", e.target.value)}
+              />
             </div>
 
             <Separator />
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Git</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Git
+            </p>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="cfg-project-id">GitLab project ID</Label>
@@ -187,29 +212,49 @@ export function OpsConfigDialog({ dirName, open, onOpenChange, onSaved }: OpsCon
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="cfg-branch">Branch</Label>
-                <Input id="cfg-branch" value={form.branch} onChange={(e) => set("branch", e.target.value)} />
+                <Input
+                  id="cfg-branch"
+                  value={form.branch}
+                  onChange={(e) => set("branch", e.target.value)}
+                />
               </div>
             </div>
 
             <Separator />
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Runtime</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Runtime
+            </p>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="cfg-blue">Blue PM2 name</Label>
-                <Input id="cfg-blue" value={form.blue} onChange={(e) => set("blue", e.target.value)} />
+                <Input
+                  id="cfg-blue"
+                  value={form.blue}
+                  onChange={(e) => set("blue", e.target.value)}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="cfg-green">Green PM2 name</Label>
-                <Input id="cfg-green" value={form.green} onChange={(e) => set("green", e.target.value)} />
+                <Input
+                  id="cfg-green"
+                  value={form.green}
+                  onChange={(e) => set("green", e.target.value)}
+                />
               </div>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="cfg-current">Current marker file</Label>
-              <Input id="cfg-current" value={form.currentFile} onChange={(e) => set("currentFile", e.target.value)} />
+              <Input
+                id="cfg-current"
+                value={form.currentFile}
+                onChange={(e) => set("currentFile", e.target.value)}
+              />
             </div>
 
             <Separator />
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Healthcheck</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Healthcheck
+            </p>
             <div className="flex items-center gap-2">
               <Switch
                 checked={form.healthEnabled}
@@ -221,7 +266,11 @@ export function OpsConfigDialog({ dirName, open, onOpenChange, onSaved }: OpsCon
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="cfg-health-path">Path</Label>
-                <Input id="cfg-health-path" value={form.healthPath} onChange={(e) => set("healthPath", e.target.value)} />
+                <Input
+                  id="cfg-health-path"
+                  value={form.healthPath}
+                  onChange={(e) => set("healthPath", e.target.value)}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="cfg-health-port">Port (optional)</Label>
@@ -236,18 +285,32 @@ export function OpsConfigDialog({ dirName, open, onOpenChange, onSaved }: OpsCon
             </div>
 
             <Separator />
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Features</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Features
+            </p>
             <div className="grid gap-2">
               <div className="flex items-center gap-2">
-                <Switch checked={form.featuresGitlab} onCheckedChange={(v) => set("featuresGitlab", v)} aria-label="GitLab integration" />
+                <Switch
+                  checked={form.featuresGitlab}
+                  onCheckedChange={(v) => set("featuresGitlab", v)}
+                  aria-label="GitLab integration"
+                />
                 <Label>GitLab integration</Label>
               </div>
               <div className="flex items-center gap-2">
-                <Switch checked={form.featuresHealthcheck} onCheckedChange={(v) => set("featuresHealthcheck", v)} aria-label="Healthcheck" />
+                <Switch
+                  checked={form.featuresHealthcheck}
+                  onCheckedChange={(v) => set("featuresHealthcheck", v)}
+                  aria-label="Healthcheck"
+                />
                 <Label>Healthcheck</Label>
               </div>
               <div className="flex items-center gap-2">
-                <Switch checked={form.featuresDeployHistory} onCheckedChange={(v) => set("featuresDeployHistory", v)} aria-label="Deploy history" />
+                <Switch
+                  checked={form.featuresDeployHistory}
+                  onCheckedChange={(v) => set("featuresDeployHistory", v)}
+                  aria-label="Deploy history"
+                />
                 <Label>Deploy history</Label>
               </div>
             </div>

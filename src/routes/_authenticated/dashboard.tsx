@@ -1,16 +1,47 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEventSource, useEventSourceConnection } from "@/hooks/useEventSource";
+import {
+  useEventSource,
+  useEventSourceConnection,
+} from "@/hooks/useEventSource";
 import { useServerFn } from "@tanstack/react-start";
 import { getHistoricalMetricsFn } from "@/server/actions/monitoring-actions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Cpu, HardDrive, Power, PowerOff, RotateCcw, Timer, Loader2, LineChart as LineChartIcon, Calendar as CalendarIcon } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { StatCard } from "@/components/stat-card";
+import { PageHeader } from "@/components/page-header";
+import { StatusPill } from "@/components/status-dot";
+import {
+  Cpu,
+  HardDrive,
+  Power,
+  PowerOff,
+  RotateCcw,
+  Timer,
+  Loader2,
+  LineChart as LineChartIcon,
+  Calendar as CalendarIcon,
+  LayoutDashboard,
+  TrendingUp,
+  TrendingDown,
+  Cpu as CpuIcon,
+  MemoryStick,
+  Server,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import dayjs from "dayjs";
@@ -24,6 +55,7 @@ import {
   Tooltip,
   ReferenceLine,
 } from "recharts";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: DashboardPage,
@@ -60,7 +92,33 @@ function timeLabel(t: number) {
 
 function tooltipLabel(t: number, rangeMs: number) {
   const d = dayjs(t);
-  return rangeMs >= 7 * 24 * 60 * 60 * 1000 ? d.format("MMM D, HH:mm") : d.format("HH:mm:ss");
+  return rangeMs >= 7 * 24 * 60 * 60 * 1000
+    ? d.format("MMM D, HH:mm")
+    : d.format("HH:mm:ss");
+}
+
+function ChartTooltip({
+  active,
+  payload,
+  label,
+  rangeMs,
+  unit,
+  formatValue,
+}: any) {
+  if (!active || !payload?.length) return null;
+  const item = payload[0];
+  return (
+    <div className="rounded-lg border border-border/60 bg-popover/90 px-3 py-2 text-xs shadow-xl backdrop-blur-md">
+      <p className="font-medium tabular-nums">
+        {formatValue
+          ? formatValue(item.value)
+          : `${Number(item.value).toFixed(1)}${unit ?? "%"}`}
+      </p>
+      <p className="text-muted-foreground tabular-nums">
+        {tooltipLabel(Number(label), rangeMs)}
+      </p>
+    </div>
+  );
 }
 
 function DashboardPage() {
@@ -69,7 +127,9 @@ function DashboardPage() {
   const getHistorical = useServerFn(getHistoricalMetricsFn);
 
   const [rangeMs, setRangeMs] = useState(24 * 60 * 60 * 1000);
-  const [hostData, setHostData] = useState<Array<Record<string, number | string>>>([]);
+  const [hostData, setHostData] = useState<
+    Array<Record<string, number | string>>
+  >([]);
   const [processSeries, setProcessSeries] = useState<
     Array<{
       name: string;
@@ -84,8 +144,14 @@ function DashboardPage() {
     to: dayjs().toDate(),
   });
   const [customMode, setCustomMode] = useState(false);
-  const [customApplied, setCustomApplied] = useState<{ from: number; to: number } | null>(null);
-  const [dataBounds, setDataBounds] = useState<{ min: number; max: number } | null>(null);
+  const [customApplied, setCustomApplied] = useState<{
+    from: number;
+    to: number;
+  } | null>(null);
+  const [dataBounds, setDataBounds] = useState<{
+    min: number;
+    max: number;
+  } | null>(null);
 
   const query = useMemo(() => {
     if (customApplied) {
@@ -110,12 +176,13 @@ function DashboardPage() {
             ramTotal: h.ramTotal ?? 0,
             diskUsed: h.diskUsed ?? 0,
             diskTotal: h.diskTotal ?? 0,
-          }))
+          })),
         );
         setProcessSeries(res.processes ?? []);
         setDataBounds(res.dataBounds ?? null);
         setSelectedProc((prev) => {
-          if (prev && (res.processes ?? []).some((p: any) => p.name === prev)) return prev;
+          if (prev && (res.processes ?? []).some((p: any) => p.name === prev))
+            return prev;
           return (res.processes?.[0]?.name as string) ?? "";
         });
       })
@@ -127,11 +194,19 @@ function DashboardPage() {
   }, [query, getHistorical]);
 
   const stats = useMemo(() => {
-    const online = processes.filter((p) => p.status === "online" && !p.isOrphan);
-    const stopped = processes.filter((p) => p.status === "stopped" && !p.isOrphan);
+    const online = processes.filter(
+      (p) => p.status === "online" && !p.isOrphan,
+    );
+    const stopped = processes.filter(
+      (p) => p.status === "stopped" && !p.isOrphan,
+    );
     const orphans = processes.filter((p) => p.isOrphan);
-    const totalCpu = processes.filter((p) => !p.isOrphan).reduce((sum, p) => sum + p.cpu, 0);
-    const totalMem = processes.filter((p) => !p.isOrphan).reduce((sum, p) => sum + p.memory, 0);
+    const totalCpu = processes
+      .filter((p) => !p.isOrphan)
+      .reduce((sum, p) => sum + p.cpu, 0);
+    const totalMem = processes
+      .filter((p) => !p.isOrphan)
+      .reduce((sum, p) => sum + p.memory, 0);
     return {
       online: online.length,
       stopped: stopped.length,
@@ -145,23 +220,29 @@ function DashboardPage() {
   const avgUptime = useMemo(() => {
     const withUptime = processes.filter((p) => p.uptime && !p.isOrphan);
     if (withUptime.length === 0) return "N/A";
-    const avg = withUptime.reduce((sum, p) => sum + (p.uptime ?? 0), 0) / withUptime.length;
+    const avg =
+      withUptime.reduce((sum, p) => sum + (p.uptime ?? 0), 0) /
+      withUptime.length;
     return formatUptime(avg);
   }, [processes]);
 
   const totalRestarts = useMemo(
-    () => processes.filter((p) => !p.isOrphan).reduce((sum, p) => sum + p.restarts, 0),
-    [processes]
+    () =>
+      processes
+        .filter((p) => !p.isOrphan)
+        .reduce((sum, p) => sum + p.restarts, 0),
+    [processes],
   );
 
   const selectedProcData = useMemo(
     () => processSeries.find((p) => p.name === selectedProc)?.points ?? [],
-    [processSeries, selectedProc]
+    [processSeries, selectedProc],
   );
 
   const selectedProcRestarts = useMemo(
-    () => processSeries.find((p) => p.name === selectedProc)?.restartTimes ?? [],
-    [processSeries, selectedProc]
+    () =>
+      processSeries.find((p) => p.name === selectedProc)?.restartTimes ?? [],
+    [processSeries, selectedProc],
   );
 
   const chartData = useMemo(
@@ -171,7 +252,7 @@ function DashboardPage() {
         cpu: Number(p.cpu.toFixed(1)),
         memory: p.memory,
       })),
-    [selectedProcData]
+    [selectedProcData],
   );
 
   const procStats = useMemo(() => {
@@ -195,21 +276,38 @@ function DashboardPage() {
     };
     const max = (key: string) => Math.max(...values(key));
     return {
-      cpu: { avg: avg("cpu"), max: max("cpu") },
-      ram: { avg: avg("ram"), max: max("ram") },
-      disk: { avg: avg("disk"), max: max("disk") },
+      cpu: {
+        avg: avg("cpu"),
+        max: max("cpu"),
+        current: num(hostData[hostData.length - 1]?.cpu),
+      },
+      ram: {
+        avg: avg("ram"),
+        max: max("ram"),
+        current: num(hostData[hostData.length - 1]?.ram),
+      },
+      disk: {
+        avg: avg("disk"),
+        max: max("disk"),
+        current: num(hostData[hostData.length - 1]?.disk),
+      },
     };
   }, [hostData]);
 
   if (!connected) {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">System overview and process monitoring</p>
-        </div>
-        <div className="flex flex-col items-center justify-center gap-4 rounded-lg border border-border py-20">
-          <Loader2 className="size-10 animate-spin text-accent" />
+      <div className="space-y-8">
+        <PageHeader
+          title="Dashboard"
+          description="System overview and process monitoring"
+          icon={<LayoutDashboard />}
+          actions={<StatusPill variant="warning">Connecting...</StatusPill>}
+        />
+        <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-border/60 bg-card/40 py-20 backdrop-blur-sm">
+          <div className="relative">
+            <div className="absolute inset-0 animate-pulse-glow rounded-full bg-primary/30 blur-xl" />
+            <Loader2 className="relative size-10 animate-spin text-primary" />
+          </div>
           <p className="text-sm text-muted-foreground">Connecting to PM2...</p>
         </div>
       </div>
@@ -217,90 +315,80 @@ function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">System overview and process monitoring</p>
-        </div>
-        <Badge variant={connected ? "default" : "destructive"}>
-          <span className="flex items-center gap-1">
-            <span className="size-1.5 rounded-full bg-green-500" /> Live
-          </span>
-        </Badge>
-      </div>
+    <div className="space-y-8">
+      <PageHeader
+        title="Dashboard"
+        description="System overview and process monitoring"
+        icon={<LayoutDashboard />}
+        actions={
+          <StatusPill variant={connected ? "online" : "error"}>
+            {connected ? "Live" : "Offline"}
+          </StatusPill>
+        }
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">CPU Usage</CardTitle>
-            <Cpu className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalCpu.toFixed(1)}%</div>
-            <p className="text-xs text-muted-foreground">Total across {stats.total} processes</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Memory</CardTitle>
-            <HardDrive className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatBytes(stats.totalMem)}</div>
-            <p className="text-xs text-muted-foreground">Combined process memory</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg Uptime</CardTitle>
-            <Timer className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{avgUptime}</div>
-            <p className="text-xs text-muted-foreground">Average running time</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Online</CardTitle>
-            <Power className="size-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-500">{stats.online}</div>
-            <p className="text-xs text-muted-foreground">Running processes</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Stopped</CardTitle>
-            <PowerOff className="size-4 text-yellow-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-yellow-500">{stats.stopped}</div>
-            <p className="text-xs text-muted-foreground">
-              {stats.orphans > 0 ? `${stats.orphans} orphaned` : "Inactive processes"}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Restarts</CardTitle>
-            <RotateCcw className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalRestarts}</div>
-            <p className="text-xs text-muted-foreground">Cumulative restarts</p>
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <StatCard
+          label="CPU Usage"
+          value={`${stats.totalCpu.toFixed(1)}%`}
+          icon={Cpu}
+          gradient="brand"
+          description={`Across ${stats.total} processes`}
+        />
+        <StatCard
+          label="Memory"
+          value={formatBytes(stats.totalMem)}
+          icon={HardDrive}
+          gradient="info"
+          description="Combined process memory"
+        />
+        <StatCard
+          label="Avg Uptime"
+          value={avgUptime}
+          icon={Timer}
+          gradient="violet"
+          description="Average running time"
+        />
+        <StatCard
+          label="Online"
+          value={stats.online}
+          icon={Power}
+          gradient="success"
+          description="Running processes"
+        />
+        <StatCard
+          label="Stopped"
+          value={stats.stopped}
+          icon={PowerOff}
+          gradient="warm"
+          description={
+            stats.orphans > 0
+              ? `${stats.orphans} orphaned`
+              : "Inactive processes"
+          }
+        />
+        <StatCard
+          label="Restarts"
+          value={totalRestarts}
+          icon={RotateCcw}
+          gradient="brand"
+          description="Cumulative restarts"
+        />
       </div>
 
       {/* Historical metrics */}
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <Card>
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0 border-b border-border/60 pb-4">
           <div className="flex items-center gap-2">
-            <LineChartIcon className="size-4 text-muted-foreground" />
-            <h2 className="text-lg font-semibold tracking-tight">Historical Metrics</h2>
+            <div className="flex size-7 items-center justify-center rounded-md bg-gradient-to-br from-[oklch(0.72_0.18_255)] to-[oklch(0.7_0.18_195)]">
+              <LineChartIcon className="size-3.5 text-white" />
+            </div>
+            <div>
+              <CardTitle className="text-base">Historical Metrics</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Host resource trends over time
+              </p>
+            </div>
           </div>
           <Select
             value={customMode ? "custom" : String(rangeMs)}
@@ -316,7 +404,7 @@ function DashboardPage() {
               setRangeMs(Number(v));
             }}
           >
-            <SelectTrigger size="sm" className="w-36">
+            <SelectTrigger size="sm" className="w-40">
               <SelectValue>
                 {customMode
                   ? "Custom range"
@@ -332,10 +420,10 @@ function DashboardPage() {
               <SelectItem value="custom">Custom range...</SelectItem>
             </SelectContent>
           </Select>
-        </div>
+        </CardHeader>
 
         {customMode && (
-          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+          <div className="flex flex-wrap items-center gap-3 border-b border-border/60 bg-muted/20 px-4 py-3">
             <Popover>
               <PopoverTrigger
                 render={
@@ -353,8 +441,14 @@ function DashboardPage() {
                   disabled={
                     dataBounds
                       ? [
-                          { before: dayjs(dataBounds.min).startOf("day").toDate() },
-                          { after: dayjs(dataBounds.max).endOf("day").toDate() },
+                          {
+                            before: dayjs(dataBounds.min)
+                              .startOf("day")
+                              .toDate(),
+                          },
+                          {
+                            after: dayjs(dataBounds.max).endOf("day").toDate(),
+                          },
                         ]
                       : undefined
                   }
@@ -378,7 +472,10 @@ function DashboardPage() {
                   const [h, m] = e.target.value.split(":").map(Number);
                   setCustomRange((r) => ({
                     ...r,
-                    from: dayjs(r.from).hour(h || 0).minute(m || 0).toDate(),
+                    from: dayjs(r.from)
+                      .hour(h || 0)
+                      .minute(m || 0)
+                      .toDate(),
                   }));
                 }}
               />
@@ -393,14 +490,16 @@ function DashboardPage() {
                   const [h, m] = e.target.value.split(":").map(Number);
                   setCustomRange((r) => ({
                     ...r,
-                    to: dayjs(r.to).hour(h || 0).minute(m || 0).toDate(),
+                    to: dayjs(r.to)
+                      .hour(h || 0)
+                      .minute(m || 0)
+                      .toDate(),
                   }));
                 }}
               />
             </div>
             <Button
               size="sm"
-              variant="outline"
               onClick={() => {
                 const from = dayjs(customRange.from);
                 const to = dayjs(customRange.to);
@@ -427,111 +526,69 @@ function DashboardPage() {
             </Button>
           </div>
         )}
-      </div>
 
-      {loading ? (
-        <div className="grid gap-4 sm:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i}>
-              <CardContent className="py-6">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="mt-4 h-32 w-full" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="grid gap-4 lg:grid-cols-3">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Host CPU</CardTitle>
-            </CardHeader>
-            <CardContent className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={hostData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="t" tickFormatter={timeLabel} stroke="var(--muted-foreground)" fontSize={11} />
-                  <YAxis stroke="var(--muted-foreground)" fontSize={11} width={32} tickFormatter={(v) => `${v}%`} />
-                  <Tooltip labelFormatter={(l) => tooltipLabel(Number(l), rangeMs)} formatter={(v) => [`${Number(v).toFixed(1)}%`, "CPU"]} />
-                  <Area type="monotone" dataKey="cpu" stroke="var(--amber-500, #f59e0b)" fill="var(--amber-500, #f59e0b)" fillOpacity={0.15} strokeWidth={1.5} />
-                </AreaChart>
-              </ResponsiveContainer>
-              <div className="mt-1.5 flex justify-between text-[10px] text-muted-foreground">
-                <span>avg {hostStats.cpu.avg.toFixed(1)}%</span>
-                <span>max {hostStats.cpu.max.toFixed(1)}%</span>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Host RAM</CardTitle>
-            </CardHeader>
-            <CardContent className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={hostData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="t" tickFormatter={timeLabel} stroke="var(--muted-foreground)" fontSize={11} />
-                  <YAxis stroke="var(--muted-foreground)" fontSize={11} width={32} tickFormatter={(v) => `${v}%`} />
-                  <Tooltip
-                    labelFormatter={(l) => tooltipLabel(Number(l), rangeMs)}
-                    formatter={(v, name) => {
-                      const idx = hostData.findIndex((d) => d.t === Number((v as any).payload?.t));
-                      const d = hostData[idx];
-                      if (name === "ram" && d) {
-                        return [`${Number(v).toFixed(1)}% (${formatBytes(Number(d.ramUsed))} / ${formatBytes(Number(d.ramTotal))})`, "RAM"];
-                      }
-                      return [`${Number(v).toFixed(1)}%`, "RAM"];
-                    }}
-                  />
-                  <Area type="monotone" dataKey="ram" stroke="var(--sky-500, #0ea5e9)" fill="var(--sky-500, #0ea5e9)" fillOpacity={0.15} strokeWidth={1.5} />
-                </AreaChart>
-              </ResponsiveContainer>
-              <div className="mt-1.5 flex justify-between text-[10px] text-muted-foreground">
-                <span>avg {hostStats.ram.avg.toFixed(1)}%</span>
-                <span>max {hostStats.ram.max.toFixed(1)}%</span>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Host Disk</CardTitle>
-            </CardHeader>
-            <CardContent className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={hostData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="t" tickFormatter={timeLabel} stroke="var(--muted-foreground)" fontSize={11} />
-                  <YAxis stroke="var(--muted-foreground)" fontSize={11} width={32} tickFormatter={(v) => `${v}%`} />
-                  <Tooltip
-                    labelFormatter={(l) => tooltipLabel(Number(l), rangeMs)}
-                    formatter={(v, name) => {
-                      const idx = hostData.findIndex((d) => d.t === Number((v as any).payload?.t));
-                      const d = hostData[idx];
-                      if (name === "disk" && d) {
-                        return [`${Number(v).toFixed(1)}% (${formatBytes(Number(d.diskUsed))} / ${formatBytes(Number(d.diskTotal))})`, "Disk"];
-                      }
-                      return [`${Number(v).toFixed(1)}%`, "Disk"];
-                    }}
-                  />
-                  <Area type="monotone" dataKey="disk" stroke="var(--emerald-500, #10b981)" fill="var(--emerald-500, #10b981)" fillOpacity={0.15} strokeWidth={1.5} />
-                </AreaChart>
-              </ResponsiveContainer>
-              <div className="mt-1.5 flex justify-between text-[10px] text-muted-foreground">
-                <span>avg {hostStats.disk.avg.toFixed(1)}%</span>
-                <span>max {hostStats.disk.max.toFixed(1)}%</span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+        <CardContent className="pt-5">
+          {loading ? (
+            <div className="grid gap-4 sm:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-56 rounded-xl" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-3">
+              <MetricChart
+                title="Host CPU"
+                data={hostData}
+                dataKey="cpu"
+                stroke="oklch(0.78 0.17 75)"
+                icon={CpuIcon}
+                gradientColor="warm"
+                stats={hostStats.cpu}
+                rangeMs={rangeMs}
+                unit="%"
+              />
+              <MetricChart
+                title="Host RAM"
+                data={hostData}
+                dataKey="ram"
+                stroke="oklch(0.78 0.16 220)"
+                icon={MemoryStick}
+                gradientColor="info"
+                stats={hostStats.ram}
+                rangeMs={rangeMs}
+                unit="%"
+              />
+              <MetricChart
+                title="Host Disk"
+                data={hostData}
+                dataKey="disk"
+                stroke="oklch(0.78 0.19 155)"
+                icon={Server}
+                gradientColor="success"
+                stats={hostStats.disk}
+                rangeMs={rangeMs}
+                unit="%"
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Per-process CPU/memory chart */}
       {processSeries.length > 0 && (
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Process CPU / Memory</CardTitle>
-            <Select value={selectedProc} onValueChange={(v) => v && setSelectedProc(v)}>
-              <SelectTrigger size="sm" className="w-52">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-border/60 pb-4">
+            <div>
+              <CardTitle className="text-base">Process CPU / Memory</CardTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Per-process resource consumption
+              </p>
+            </div>
+            <Select
+              value={selectedProc}
+              onValueChange={(v) => v && setSelectedProc(v)}
+            >
+              <SelectTrigger size="sm" className="w-56">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -543,52 +600,296 @@ function DashboardPage() {
               </SelectContent>
             </Select>
           </CardHeader>
-          <CardContent className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="t" tickFormatter={timeLabel} stroke="var(--muted-foreground)" fontSize={11} />
-                <YAxis yAxisId="cpu" stroke="var(--muted-foreground)" fontSize={11} width={32} tickFormatter={(v) => `${v}%`} />
-                <YAxis yAxisId="mem" orientation="right" stroke="var(--muted-foreground)" fontSize={11} width={44} tickFormatter={(v) => formatBytes(v)} />
-                <Tooltip
-                  labelFormatter={(l) => tooltipLabel(Number(l), rangeMs)}
-                  formatter={(v, name) =>
-                    name === "memory"
-                      ? [`${(Number(v) / 1048576).toFixed(1)} MB`, "memory"]
-                      : [`${Number(v).toFixed(1)}%`, "cpu"]
-                  }
-                />
-                {selectedProcRestarts.map((t) => (
-                  <ReferenceLine
-                    key={t}
-                    x={t}
-                    yAxisId="cpu"
-                    stroke="var(--red-500, #ef4444)"
-                    strokeWidth={1}
-                    strokeDasharray="4 4"
+          <CardContent className="pt-5">
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="cpuFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop
+                        offset="5%"
+                        stopColor="oklch(0.78 0.17 75)"
+                        stopOpacity={0.35}
+                      />
+                      <stop
+                        offset="95%"
+                        stopColor="oklch(0.78 0.17 75)"
+                        stopOpacity={0}
+                      />
+                    </linearGradient>
+                    <linearGradient id="memFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop
+                        offset="5%"
+                        stopColor="oklch(0.78 0.16 220)"
+                        stopOpacity={0.3}
+                      />
+                      <stop
+                        offset="95%"
+                        stopColor="oklch(0.78 0.16 220)"
+                        stopOpacity={0}
+                      />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    stroke="oklch(1 0 0 / 5%)"
+                    strokeDasharray="3 3"
                   />
-                ))}
-                <Area yAxisId="cpu" type="monotone" dataKey="cpu" name="cpu" stroke="var(--amber-500, #f59e0b)" fill="var(--amber-500, #f59e0b)" fillOpacity={0.15} strokeWidth={1.5} />
-                <Area yAxisId="mem" type="monotone" dataKey="memory" name="memory" stroke="var(--sky-500, #0ea5e9)" fill="var(--sky-500, #0ea5e9)" fillOpacity={0.1} strokeWidth={1.5} />
-              </AreaChart>
-            </ResponsiveContainer>
+                  <XAxis
+                    dataKey="t"
+                    tickFormatter={timeLabel}
+                    stroke="oklch(1 0 0 / 35%)"
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    yAxisId="cpu"
+                    stroke="oklch(1 0 0 / 35%)"
+                    fontSize={11}
+                    width={36}
+                    tickFormatter={(v) => `${v}%`}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    yAxisId="mem"
+                    orientation="right"
+                    stroke="oklch(1 0 0 / 35%)"
+                    fontSize={11}
+                    width={48}
+                    tickFormatter={(v) => formatBytes(v)}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <Tooltip
+                    cursor={{ stroke: "oklch(1 0 0 / 20%)", strokeWidth: 1 }}
+                    content={({ active, payload, label }) => (
+                      <ChartTooltip
+                        active={active}
+                        payload={payload}
+                        label={label}
+                        rangeMs={rangeMs}
+                      />
+                    )}
+                  />
+                  {selectedProcRestarts.map((t) => (
+                    <ReferenceLine
+                      key={t}
+                      x={t}
+                      yAxisId="cpu"
+                      stroke="oklch(0.72 0.22 25)"
+                      strokeWidth={1}
+                      strokeDasharray="4 4"
+                      opacity={0.7}
+                    />
+                  ))}
+                  <Area
+                    yAxisId="cpu"
+                    type="monotone"
+                    dataKey="cpu"
+                    name="cpu"
+                    stroke="oklch(0.78 0.17 75)"
+                    fill="url(#cpuFill)"
+                    strokeWidth={2}
+                  />
+                  <Area
+                    yAxisId="mem"
+                    type="monotone"
+                    dataKey="memory"
+                    name="memory"
+                    stroke="oklch(0.78 0.16 220)"
+                    fill="url(#memFill)"
+                    strokeWidth={2}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
             {procStats && (
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
-                <span>avg CPU {procStats.avgCpu.toFixed(1)}%</span>
-                <span>max CPU {procStats.maxCpu.toFixed(1)}%</span>
-                <span>avg mem {formatBytes(procStats.avgMemory)}</span>
-                <span>max mem {formatBytes(procStats.maxMemory)}</span>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <Stat
+                  label="avg CPU"
+                  value={`${procStats.avgCpu.toFixed(1)}%`}
+                  accent="warm"
+                />
+                <Stat
+                  label="max CPU"
+                  value={`${procStats.maxCpu.toFixed(1)}%`}
+                  accent="warm"
+                />
+                <Stat
+                  label="avg mem"
+                  value={formatBytes(procStats.avgMemory)}
+                  accent="info"
+                />
+                <Stat
+                  label="max mem"
+                  value={formatBytes(procStats.maxMemory)}
+                  accent="info"
+                />
                 {selectedProcRestarts.length > 0 && (
-                  <span className="flex items-center gap-1 text-red-500">
-                    <RotateCcw className="size-3" /> {selectedProcRestarts.length} restart
-                    {selectedProcRestarts.length !== 1 ? "s" : ""}
-                  </span>
+                  <Stat
+                    label="restarts"
+                    value={`${selectedProcRestarts.length}`}
+                    accent="error"
+                    icon={RotateCcw}
+                  />
                 )}
               </div>
             )}
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  accent,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  accent: "warm" | "info" | "success" | "brand" | "error";
+  icon?: React.ComponentType<{ className?: string }>;
+}) {
+  const accentClass = {
+    warm: "text-[oklch(0.88_0.17_75)]",
+    info: "text-[oklch(0.85_0.16_220)]",
+    success: "text-[oklch(0.85_0.19_155)]",
+    brand: "text-[oklch(0.85_0.18_255)]",
+    error: "text-[oklch(0.82_0.18_25)]",
+  }[accent];
+  const bgClass = {
+    warm: "bg-[oklch(0.78_0.17_75/0.08)] border-[oklch(0.78_0.17_75/0.18)]",
+    info: "bg-[oklch(0.78_0.16_220/0.08)] border-[oklch(0.78_0.16_220/0.18)]",
+    success:
+      "bg-[oklch(0.78_0.19_155/0.08)] border-[oklch(0.78_0.19_155/0.18)]",
+    brand: "bg-[oklch(0.72_0.18_255/0.08)] border-[oklch(0.72_0.18_255/0.18)]",
+    error: "bg-[oklch(0.72_0.22_25/0.08)] border-[oklch(0.72_0.22_25/0.18)]",
+  }[accent];
+
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs",
+        bgClass,
+      )}
+    >
+      {Icon && <Icon className={cn("size-3", accentClass)} />}
+      <span className="text-muted-foreground">{label}</span>
+      <span className={cn("font-semibold tabular-nums", accentClass)}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function MetricChart({
+  title,
+  data,
+  dataKey,
+  stroke,
+  icon: Icon,
+  gradientColor,
+  stats,
+  rangeMs,
+  unit = "%",
+}: {
+  title: string;
+  data: Array<Record<string, number | string>>;
+  dataKey: string;
+  stroke: string;
+  icon: React.ComponentType<{ className?: string }>;
+  gradientColor: "warm" | "info" | "success" | "brand" | "violet";
+  stats: { avg: number; max: number; current: number };
+  rangeMs: number;
+  unit?: string;
+}) {
+  const gradientId = `grad-${dataKey}`;
+  const accentClass = {
+    warm: "text-[oklch(0.88_0.17_75)]",
+    info: "text-[oklch(0.85_0.16_220)]",
+    success: "text-[oklch(0.85_0.19_155)]",
+    brand: "text-[oklch(0.85_0.18_255)]",
+    violet: "text-[oklch(0.82_0.18_295)]",
+  }[gradientColor];
+  const bgClass = {
+    warm: "from-[oklch(0.78_0.17_75/0.12)] to-transparent",
+    info: "from-[oklch(0.78_0.16_220/0.12)] to-transparent",
+    success: "from-[oklch(0.78_0.19_155/0.12)] to-transparent",
+    brand: "from-[oklch(0.72_0.18_255/0.12)] to-transparent",
+    violet: "from-[oklch(0.72_0.2_295/0.12)] to-transparent",
+  }[gradientColor];
+
+  return (
+    <div
+      className={cn(
+        "relative overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br p-4",
+        bgClass,
+      )}
+    >
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Icon className={cn("size-3.5", accentClass)} />
+          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            {title}
+          </span>
+        </div>
+        <span className={cn("text-sm font-semibold tabular-nums", accentClass)}>
+          {stats.current.toFixed(1)}
+          {unit}
+        </span>
+      </div>
+      <div className="h-36">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data}>
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={stroke} stopOpacity={0.4} />
+                <stop offset="95%" stopColor={stroke} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid
+              stroke="oklch(1 0 0 / 5%)"
+              strokeDasharray="3 3"
+              vertical={false}
+            />
+            <XAxis dataKey="t" hide />
+            <YAxis hide domain={[0, 100]} />
+            <Tooltip
+              cursor={{ stroke: "oklch(1 0 0 / 20%)", strokeWidth: 1 }}
+              content={({ active, payload, label }) => (
+                <ChartTooltip
+                  active={active}
+                  payload={payload}
+                  label={label}
+                  rangeMs={rangeMs}
+                  unit={unit}
+                />
+              )}
+            />
+            <Area
+              type="monotone"
+              dataKey={dataKey}
+              stroke={stroke}
+              strokeWidth={2}
+              fill={`url(#${gradientId})`}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="mt-2 flex items-center justify-between text-[10px]">
+        <span className="flex items-center gap-1 text-muted-foreground">
+          <TrendingDown className="size-3" /> avg {stats.avg.toFixed(1)}
+          {unit}
+        </span>
+        <span className="flex items-center gap-1 text-muted-foreground">
+          <TrendingUp className="size-3" /> max {stats.max.toFixed(1)}
+          {unit}
+        </span>
+      </div>
     </div>
   );
 }

@@ -1,19 +1,54 @@
 import pm2 from "pm2";
 import { promisify } from "node:util";
 
+interface Pm2EnvExt {
+  pm_cwd?: string;
+  pm_out_log_path?: string;
+  pm_err_log_path?: string;
+  pm_exec_path?: string;
+  exec_interpreter?: string;
+  pm_uptime?: number;
+  unstable_restarts?: number;
+  restart_time?: number;
+  status?: string;
+  instances?: number | "max";
+  node_version?: string;
+  username?: string;
+  autorestart?: boolean;
+  merge_logs?: boolean;
+  axm_actions?: any[];
+  out_file?: string;
+  error_file?: string;
+  pm_log_path?: string;
+  log_file?: string;
+  version?: string;
+  namespace?: string;
+  exec_mode?: string;
+  created_at?: number;
+  watch?: boolean;
+  env?: Record<string, string>;
+}
+
+interface Pm2ProcessExt {
+  name?: string;
+  pid?: number;
+  pm_id?: number;
+  monit?: { memory?: number; cpu?: number };
+  pm2_env?: Pm2EnvExt;
+}
+
 const pm2Connect = promisify(pm2.connect.bind(pm2));
 const pm2List = promisify(pm2.list.bind(pm2));
 const pm2Restart = promisify(pm2.restart.bind(pm2));
 const pm2Stop = promisify(pm2.stop.bind(pm2));
-const pm2Trigger = promisify(pm2.trigger.bind(pm2));
 const pm2Delete = promisify(pm2.delete.bind(pm2));
 
 function pm2Start(options: string | object): Promise<object[]> {
   return new Promise((resolve, reject) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (pm2.start as any)(options, (err: any, apps: any) => {
       if (err instanceof Error) reject(err);
-      else if (typeof err === "string" && err.length > 0) reject(new Error(err));
+      else if (typeof err === "string" && err.length > 0)
+        reject(new Error(err));
       else resolve(apps ?? err ?? []);
     });
   });
@@ -37,23 +72,23 @@ function resetConnection() {
   connectingPromise = null;
 }
 
-export async function loadProcessList() {
+export async function loadProcessList(): Promise<Pm2ProcessExt[]> {
   await ensureConnected();
   try {
     const list = await pm2List();
-    return Array.isArray(list) ? list : [];
+    return Array.isArray(list) ? (list as Pm2ProcessExt[]) : [];
   } catch {
     resetConnection();
     return [];
   }
 }
 
-export function normalizeProcessSummary(proc: Record<string, any>) {
+export function normalizeProcessSummary(proc: Pm2ProcessExt) {
   const env = proc.pm2_env || {};
   const monit = proc.monit || {};
 
   return {
-    id: proc.pm_id,
+    id: proc.pm_id ?? null,
     name: proc.name || `pm2-${proc.pm_id}`,
     pid: proc.pid || null,
     status: env.status || "unknown",
@@ -75,7 +110,7 @@ export function normalizeProcessSummary(proc: Record<string, any>) {
 export async function loadProcessDetails(processId: string | number) {
   const processes = await loadProcessList();
   const proc = processes.find(
-    (entry) => String(entry.pm_id) === String(processId)
+    (entry) => String(entry.pm_id) === String(processId),
   );
   if (!proc) return null;
 
@@ -161,7 +196,7 @@ export async function flushLogs(processId: string | number) {
 export async function getProcessActions(processId: string | number) {
   const processes = await loadProcessList();
   const proc = processes.find(
-    (entry) => String(entry.pm_id) === String(processId)
+    (entry) => String(entry.pm_id) === String(processId),
   );
   if (!proc) return [];
   const axm = proc.pm2_env?.axm_actions || [];
@@ -171,8 +206,8 @@ export async function getProcessActions(processId: string | number) {
       const params = Array.isArray(a.arity)
         ? a.arity
         : Array.isArray(a.opts)
-        ? a.opts
-        : [];
+          ? a.opts
+          : [];
       return { name: a.action_name, params };
     });
 }
@@ -180,17 +215,16 @@ export async function getProcessActions(processId: string | number) {
 export async function triggerProcessAction(
   processId: string | number,
   actionName: string,
-  params?: any
+  params?: any,
 ) {
   await ensureConnected();
   try {
-    const hasParams =
-      params !== undefined && params !== null && params !== "";
-    return await pm2Trigger(
-      String(processId),
-      actionName,
-      ...(hasParams ? [params] : [])
-    );
+    const hasParams = params !== undefined && params !== null && params !== "";
+    return await new Promise<void>((resolve, reject) => {
+      const cb = (err: Error | null) => (err ? reject(err) : resolve());
+      if (hasParams) pm2.trigger(String(processId), actionName, params, cb);
+      else pm2.trigger(String(processId), actionName, cb);
+    });
   } catch {
     resetConnection();
     throw new Error("Failed to trigger action");
@@ -200,13 +234,13 @@ export async function triggerProcessAction(
 export function getLogFiles(processId: string | number) {
   return loadProcessList().then((processes) => {
     const proc = processes.find(
-      (entry) => String(entry.pm_id) === String(processId)
+      (entry) => String(entry.pm_id) === String(processId),
     );
     if (!proc) return [];
     const env = proc.pm2_env || {};
     const paths: { type: string; path: string }[] = [];
     const seen = new Set<string>();
-    const add = (type: string, p: string | null) => {
+    const add = (type: string, p: string | null | undefined) => {
       if (!p || p === "/dev/null" || seen.has(p)) return;
       seen.add(p);
       paths.push({ type, path: p });
@@ -231,7 +265,7 @@ export async function readLogLinesByName(pm2Name: string) {
   const paths: string[] = [];
   const seen = new Set<string>();
 
-  const addPath = (p: string | null) => {
+  const addPath = (p: string | null | undefined) => {
     if (!p || p === "/dev/null" || seen.has(p)) return;
     seen.add(p);
     paths.push(p);
@@ -263,7 +297,8 @@ export async function readLogLinesByName(pm2Name: string) {
           await handle.read(buffer, 0, length, start);
         }
         const content = buffer.toString("utf8");
-        const normalized = start > 0 ? content.replace(/^[^\n]*\n?/, "") : content;
+        const normalized =
+          start > 0 ? content.replace(/^[^\n]*\n?/, "") : content;
         const lines = normalized.split(/\r?\n/).filter((l) => l.length > 0);
         const source = filePath.includes("err") ? "stderr" : "stdout";
         for (const line of lines) {

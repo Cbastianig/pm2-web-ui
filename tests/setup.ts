@@ -6,6 +6,7 @@ process.env.AUTH_PASSWORD_HASH =
   "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92" +
   "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92";
 process.env.AUTH_USERNAME ||= "admin";
+process.env.JWT_SECRET ||= "0123456789abcdef0123456789abcdef";
 
 afterEach(() => {
   _resetEnv();

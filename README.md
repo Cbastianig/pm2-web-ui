@@ -51,9 +51,39 @@ pnpm start
 | AUTH_PASSWORD_SALT | required | Hex-encoded scrypt salt |
 | AUTH_PASSWORD_HASH | required | Hex-encoded scrypt hash (64 bytes) |
 | SESSION_TTL_MS | 28800000 | Session lifetime (8h) |
+| TRUST_PROXY | 0 | Set to `1` only when behind a trusted reverse proxy |
 | SQLITE_DB_PATH | ./data/pm2-process-web-ui.db | SQLite database path |
 
 See `.env.example` for all options.
+
+## Reverse proxy & rate limiting
+
+`TRUST_PROXY` controls whether the app trusts `x-forwarded-for` / `x-forwarded-proto` headers:
+
+- **`TRUST_PROXY=0` (default)**: forged headers are ignored. The login rate limit and account lockout use the real client IP from the TCP socket, so an attacker cannot bypass brute-force protection by spoofing `x-forwarded-for`.
+- **`TRUST_PROXY=1`**: header values are trusted. Only enable this when the app is reachable exclusively through a trusted reverse proxy (Apache, nginx) that overwrites those headers — otherwise spoofing them bypasses rate limiting and affects `Secure` cookie handling.
+
+## Running under PM2
+
+```bash
+# Production build
+pnpm build
+
+# Start with PM2 (uses ecosystem.config.cjs)
+pm2 start ecosystem.config.cjs
+
+# Persist across reboots
+pm2 save
+pm2 startup
+
+# Useful commands
+pm2 status            # List apps
+pm2 logs pm2-process-web-ui
+pm2 restart pm2-process-web-ui
+pm2 stop pm2-process-web-ui
+```
+
+The app runs via `start.pm2.mjs`, which loads `.env` with `process.loadEnvFile` before launching srvx. This is required because srvx skips loading `.env` when spawned as a PM2 child (IPC) process.
 
 ## Deployment behind Apache
 

@@ -73,12 +73,27 @@ export const gitlabProvider: GitLabProvider = {
 
     try {
       const res = await fetch(
-        apiUrl(`/projects/${projectId}/repository/commits/${encodeURIComponent(sha)}`),
-        { headers: gitlabHeaders(), signal: AbortSignal.timeout(5000) }
+        apiUrl(
+          `/projects/${projectId}/repository/commits/${encodeURIComponent(sha)}`,
+        ),
+        { headers: gitlabHeaders(), signal: AbortSignal.timeout(5000) },
       );
       if (!res.ok) return null;
-      const c = (await res.json()) as { id: string; short_id: string; title: string; author_name: string; authored_date: string };
-      const value: CommitInfo = { hash: c.id, shortHash: c.short_id, branch: "", author: c.author_name, message: c.title, date: c.authored_date };
+      const c = (await res.json()) as {
+        id: string;
+        short_id: string;
+        title: string;
+        author_name: string;
+        authored_date: string;
+      };
+      const value: CommitInfo = {
+        hash: c.id,
+        shortHash: c.short_id,
+        branch: "",
+        author: c.author_name,
+        message: c.title,
+        date: c.authored_date,
+      };
       commitCache.set(key, value);
       return value;
     } catch {
@@ -89,8 +104,10 @@ export const gitlabProvider: GitLabProvider = {
   async getBranch(projectId: number, branch: string) {
     try {
       const res = await fetch(
-        apiUrl(`/projects/${projectId}/repository/branches/${encodeURIComponent(branch)}`),
-        { headers: gitlabHeaders(), signal: AbortSignal.timeout(5000) }
+        apiUrl(
+          `/projects/${projectId}/repository/branches/${encodeURIComponent(branch)}`,
+        ),
+        { headers: gitlabHeaders(), signal: AbortSignal.timeout(5000) },
       );
       if (!res.ok) return null;
       const data = (await res.json()) as { name: string };
@@ -107,8 +124,10 @@ export const gitlabProvider: GitLabProvider = {
 
     try {
       const res = await fetch(
-        apiUrl(`/projects/${projectId}/pipelines?ref=${encodeURIComponent(branch)}&per_page=1&order_by=id&sort=desc`),
-        { headers: gitlabHeaders(), signal: AbortSignal.timeout(5000) }
+        apiUrl(
+          `/projects/${projectId}/pipelines?ref=${encodeURIComponent(branch)}&per_page=1&order_by=id&sort=desc`,
+        ),
+        { headers: gitlabHeaders(), signal: AbortSignal.timeout(5000) },
       );
       if (!res.ok) return null;
       const items = (await res.json()) as any[];
@@ -128,7 +147,7 @@ export const gitlabProvider: GitLabProvider = {
       pipelineCache.set(key, value);
       return value;
     } catch (err) {
-      console.log(`[GITLAB] Pipeline error: ${(err as Error).message}`);
+      console.error(`[GITLAB] Pipeline error: ${(err as Error).message}`);
       return null;
     }
   },

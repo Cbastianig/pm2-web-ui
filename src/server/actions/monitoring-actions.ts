@@ -3,8 +3,12 @@ import { z } from "zod";
 import { getDb } from "@/server/storage/client";
 import { monitoring, logEntries, processMetrics, alertPrefs, hostMetrics } from "@/server/storage/schema";
 import { eq, desc, gte, asc, lte, and, min, max } from "drizzle-orm";
+import { authMiddleware } from "@/server/auth/middleware";
+
+const auth = () => [authMiddleware];
 
 export const toggleAlertPrefsFn = createServerFn({ method: "POST" })
+  .middleware(auth())
   .validator(z.object({ pm2Name: z.string(), alertsEnabled: z.boolean() }))
   .handler(async ({ data }) => {
     const db = getDb();
@@ -30,6 +34,7 @@ export const toggleAlertPrefsFn = createServerFn({ method: "POST" })
   });
 
 export const toggleMonitoringFn = createServerFn({ method: "POST" })
+  .middleware(auth())
   .validator(
     z.object({
       pm2Name: z.string(),
@@ -83,6 +88,7 @@ export const toggleMonitoringFn = createServerFn({ method: "POST" })
   });
 
 export const getMonitoringStatusFn = createServerFn({ method: "GET" })
+  .middleware(auth())
   .validator(z.object({ pm2Name: z.string() }))
   .handler(async ({ data }) => {
     const db = getDb();
@@ -95,6 +101,7 @@ export const getMonitoringStatusFn = createServerFn({ method: "GET" })
   });
 
 export const getStoredLogsFn = createServerFn({ method: "GET" })
+  .middleware(auth())
   .validator(z.object({ processName: z.string(), limit: z.number().default(1000) }))
   .handler(async ({ data }) => {
     const db = getDb();
@@ -117,6 +124,7 @@ export const getStoredLogsFn = createServerFn({ method: "GET" })
   });
 
 export const getProcessMetricsFn = createServerFn({ method: "GET" })
+  .middleware(auth())
   .validator(z.object({ processName: z.string(), limit: z.number().default(144) }))
   .handler(async ({ data }) => {
     const db = getDb();
@@ -139,6 +147,7 @@ export const getProcessMetricsFn = createServerFn({ method: "GET" })
   });
 
 export const getHistoricalMetricsFn = createServerFn({ method: "GET" })
+  .middleware(auth())
   .validator(
     z.object({
       since: z.number().int().optional(),

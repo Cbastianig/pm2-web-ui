@@ -6,7 +6,15 @@ import { Input } from "@/components/ui/input";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { toast } from "sonner";
 import { apiUrl } from "@/lib/basePath";
-import { Search, Pause, Play, Copy, Download, Eraser, Loader2 } from "lucide-react";
+import {
+  Search,
+  Pause,
+  Play,
+  Copy,
+  Download,
+  Eraser,
+  Loader2,
+} from "lucide-react";
 
 interface ProcessLogsProps {
   name: string;
@@ -25,8 +33,12 @@ export function ProcessLogs({
   const getStoredLogs = useServerFn(getStoredLogsFn);
   const readLogs = useServerFn(readLogsFn);
 
-  const [liveLines, setLiveLines] = useState<{ text: string; level: string }[]>([]);
-  const [storedLines, setStoredLines] = useState<{ text: string; level: string }[]>([]);
+  const [liveLines, setLiveLines] = useState<{ text: string; level: string }[]>(
+    [],
+  );
+  const [storedLines, setStoredLines] = useState<
+    { text: string; level: string }[]
+  >([]);
   const [storedReady, setStoredReady] = useState(false);
   const [logPaused, setLogPaused] = useState(false);
   const [logSearch, setLogSearch] = useState("");
@@ -87,7 +99,9 @@ export function ProcessLogs({
     if (!container) return;
     const onScroll = () => {
       autoStickRef.current =
-        container.scrollHeight - (container.scrollTop + container.clientHeight) < 48;
+        container.scrollHeight -
+          (container.scrollTop + container.clientHeight) <
+        48;
     };
     container.addEventListener("scroll", onScroll);
     return () => container.removeEventListener("scroll", onScroll);
@@ -107,7 +121,8 @@ export function ProcessLogs({
 
   const filteredLines = useMemo(() => {
     return allLines.filter((l) => {
-      if (logFilters.size < 4 && l.level && !logFilters.has(l.level)) return false;
+      if (logFilters.size < 4 && l.level && !logFilters.has(l.level))
+        return false;
       if (logSearch && !l.text.toLowerCase().includes(logSearch.toLowerCase()))
         return false;
       return true;
@@ -193,12 +208,28 @@ export function ProcessLogs({
           onClick={() => setLogPaused(!logPaused)}
           title={logPaused ? "Resume" : "Pause"}
         >
-          {logPaused ? <Play className="size-3" /> : <Pause className="size-3" />}
+          {logPaused ? (
+            <Play className="size-3" />
+          ) : (
+            <Pause className="size-3" />
+          )}
         </Button>
-        <Button variant="ghost" size="icon" className="size-7" onClick={copyLogs} title="Copy">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7"
+          onClick={copyLogs}
+          title="Copy"
+        >
           <Copy className="size-3" />
         </Button>
-        <Button variant="ghost" size="icon" className="size-7" onClick={downloadLogs} title="Download">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7"
+          onClick={downloadLogs}
+          title="Download"
+        >
           <Download className="size-3" />
         </Button>
         {flushProcessId != null && (
@@ -210,7 +241,11 @@ export function ProcessLogs({
             disabled={flushing}
             title="Flush logs"
           >
-            {flushing ? <Loader2 className="size-3 animate-spin" /> : <Eraser className="size-3" />}
+            {flushing ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <Eraser className="size-3" />
+            )}
           </Button>
         )}
       </div>
@@ -245,7 +280,9 @@ export function ProcessLogs({
               }`}
             >
               {timeStr && (
-                <span className="shrink-0 text-muted-foreground">{timeStr}</span>
+                <span className="shrink-0 text-muted-foreground">
+                  {timeStr}
+                </span>
               )}
               <span
                 className={`shrink-0 w-8 text-right ${levelColor} font-semibold`}

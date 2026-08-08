@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 export const Route = createFileRoute("/api/alerting/settings")({
   server: {
     handlers: {
-      GET: async ({}) => {
+      GET: async () => {
         const session = getSession();
         if (!session) return new Response("Unauthorized", { status: 401 });
 

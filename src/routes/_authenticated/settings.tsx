@@ -1,15 +1,40 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { PageHeader } from "@/components/page-header";
+import {
+  Settings as SettingsIcon,
+  FileCog,
+  Bell,
+  KeyRound,
+  Loader2,
+  Save,
+  Send,
+  Webhook,
+  Hash,
+} from "lucide-react";
 import { toast } from "sonner";
 import { apiUrl } from "@/lib/basePath";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsPage,
@@ -18,14 +43,19 @@ export const Route = createFileRoute("/_authenticated/settings")({
 function SettingsPage() {
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground">Configuration and alerting preferences</p>
-      </div>
+      <PageHeader
+        title="Settings"
+        description="Configuration and alerting preferences"
+        icon={<SettingsIcon />}
+      />
       <Tabs defaultValue="general" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="alerting">Alerting</TabsTrigger>
+        <TabsList className="w-full sm:w-fit">
+          <TabsTrigger value="general">
+            <FileCog /> General
+          </TabsTrigger>
+          <TabsTrigger value="alerting">
+            <Bell /> Alerting
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="general">
           <GeneralSettingsTab />
@@ -48,7 +78,7 @@ function GeneralSettingsTab() {
     fetch(apiUrl("/api/settings/general"))
       .then((r) => r.json())
       .then((data) => setSettings(data.settings ?? {}))
-      .catch(() => toast("Failed to load settings"))
+      .catch(() => toast.error("Failed to load settings"))
       .finally(() => setLoading(false));
   }, []);
 
@@ -65,43 +95,67 @@ function GeneralSettingsTab() {
       });
       if (!res.ok) throw new Error("Save failed");
       setNewPassword("");
-      toast("Settings saved. Restart required for changes to take effect.");
+      toast.success(
+        "Settings saved. Restart required for changes to take effect.",
+      );
     } catch (err) {
-      toast(err instanceof Error ? err.message : "Save failed");
+      toast.error(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
   }
 
-  if (loading) return <p className="py-4 text-sm text-muted-foreground">Loading...</p>;
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" />
+          Loading settings...
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>General Settings</CardTitle>
+        <CardDescription>
+          Changes are written to the{" "}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">
+            .env
+          </code>{" "}
+          file. A restart is required for runtime changes.
+        </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSave} className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Changes are written to the .env file. A restart is required for runtime changes.
-          </p>
+        <form onSubmit={handleSave} className="space-y-5">
           {Object.keys(settings).length === 0 && (
-            <p className="text-sm text-muted-foreground">No .env file found.</p>
+            <div className="rounded-lg border border-dashed border-border/60 bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
+              No .env file found.
+            </div>
           )}
           {Object.entries(settings).map(([key, value]) => (
             <div key={key} className="space-y-1.5">
-              <Label htmlFor={`env-${key}`}>{key}</Label>
+              <Label htmlFor={`env-${key}`} className="font-mono text-xs">
+                {key}
+              </Label>
               <Input
                 id={`env-${key}`}
                 value={value}
-                onChange={(e) => setSettings((s) => ({ ...s, [key]: e.target.value }))}
+                onChange={(e) =>
+                  setSettings((s) => ({ ...s, [key]: e.target.value }))
+                }
                 autoComplete="off"
+                className="font-mono"
               />
             </div>
           ))}
-          <Separator />
+          {Object.keys(settings).length > 0 && <Separator />}
           <div className="space-y-1.5">
-            <Label htmlFor="new-password">Change Password</Label>
+            <Label htmlFor="new-password" className="flex items-center gap-1.5">
+              <KeyRound className="size-3.5" /> Change Password
+            </Label>
             <Input
               id="new-password"
               type="password"
@@ -115,6 +169,11 @@ function GeneralSettingsTab() {
             </p>
           </div>
           <Button type="submit" disabled={saving}>
+            {saving ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <Save className="size-3" />
+            )}
             {saving ? "Saving..." : "Save Changes"}
           </Button>
         </form>
@@ -145,10 +204,15 @@ function AlertingSettingsTab() {
           }),
         });
         const r = await res.json();
-        toast(r.ok ? `Webhook sent (HTTP ${r.status})` : `Failed: ${r.error}`);
+        if (r.ok) toast.success(`Webhook sent (HTTP ${r.status})`);
+        else toast.error(`Failed: ${r.error}`);
       } catch (e) {
-        toast(`Webhook test failed: ${e instanceof Error ? e.message : "error"}`);
-      } finally { setWebhookTesting(false); }
+        toast.error(
+          `Webhook test failed: ${e instanceof Error ? e.message : "error"}`,
+        );
+      } finally {
+        setWebhookTesting(false);
+      }
     } else {
       setNtfyTesting(true);
       try {
@@ -164,10 +228,15 @@ function AlertingSettingsTab() {
           }),
         });
         const r = await res.json();
-        toast(r.ok ? `ntfy sent (HTTP ${r.status})` : `Failed: ${r.error}`);
+        if (r.ok) toast.success(`ntfy sent (HTTP ${r.status})`);
+        else toast.error(`Failed: ${r.error}`);
       } catch (e) {
-        toast(`ntfy test failed: ${e instanceof Error ? e.message : "error"}`);
-      } finally { setNtfyTesting(false); }
+        toast.error(
+          `ntfy test failed: ${e instanceof Error ? e.message : "error"}`,
+        );
+      } finally {
+        setNtfyTesting(false);
+      }
     }
   }
 
@@ -175,7 +244,7 @@ function AlertingSettingsTab() {
     fetch(apiUrl("/api/alerting/settings"))
       .then((r) => r.json())
       .then((data) => setSettings(data.settings ?? {}))
-      .catch(() => toast("Failed to load settings"))
+      .catch(() => toast.error("Failed to load settings"))
       .finally(() => setLoading(true));
   }, []);
 
@@ -192,9 +261,9 @@ function AlertingSettingsTab() {
         body: JSON.stringify({ settings }),
       });
       if (!res.ok) throw new Error("Save failed");
-      toast("Alerting settings saved.");
+      toast.success("Alerting settings saved.");
     } catch (err) {
-      toast(err instanceof Error ? err.message : "Save failed");
+      toast.error(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
@@ -205,109 +274,255 @@ function AlertingSettingsTab() {
   const webhookEnabled = settings["reporter.webhook.enabled"] === "1";
   const webhookUrl = settings["reporter.webhook.url"] ?? "";
   const ntfyEnabled = settings["reporter.ntfy.enabled"] === "1";
-  const ntfyServerUrl = settings["reporter.ntfy.serverUrl"] ?? "https://ntfy.sh";
+  const ntfyServerUrl =
+    settings["reporter.ntfy.serverUrl"] ?? "https://ntfy.sh";
   const ntfyTopic = settings["reporter.ntfy.topic"] ?? "";
   const ntfyPriority = settings["reporter.ntfy.priority"] ?? "default";
   const ntfyToken = settings["reporter.ntfy.token"] ?? "";
 
-  if (!loading) return <p className="py-4 text-sm text-muted-foreground">Loading...</p>;
+  if (loading && Object.keys(settings).length === 0) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" />
+          Loading settings...
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-4">
       <Card>
         <CardHeader>
           <CardTitle>When to alert</CardTitle>
+          <CardDescription>
+            Control how often alerts are dispatched.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-sm">
-              <input type="radio" name="alert-mode" checked={mode === "every"} onChange={() => set("alert.mode", "every")} />
-              Alert on every match
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="radio" name="alert-mode" checked={mode === "throttle"} onChange={() => set("alert.mode", "throttle")} />
-              Alert once, then wait
-            </label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <ModeOption
+              active={mode === "every"}
+              title="Alert on every match"
+              description="Send a notification each time a matching event fires."
+              onClick={() => set("alert.mode", "every")}
+            />
+            <ModeOption
+              active={mode === "throttle"}
+              title="Alert once, then wait"
+              description="Throttle notifications to avoid alert fatigue."
+              onClick={() => set("alert.mode", "throttle")}
+            />
           </div>
           {mode === "throttle" && (
-            <div className="flex items-center gap-2">
-              <Input className="w-20" type="number" min="1" value={throttleMin} onChange={(e) => set("alert.throttleMinutes", e.target.value)} />
-              <span className="text-sm text-muted-foreground">minutes before alerting again</span>
+            <div className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+              <Input
+                className="w-20"
+                type="number"
+                min="1"
+                value={throttleMin}
+                onChange={(e) => set("alert.throttleMinutes", e.target.value)}
+              />
+              <span className="text-sm text-muted-foreground">
+                minutes before alerting again
+              </span>
             </div>
           )}
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Webhook</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Switch checked={webhookEnabled} onCheckedChange={(v) => set("reporter.webhook.enabled", v ? "1" : "0")} />
-            <Label>{webhookEnabled ? "Enabled" : "Disabled"}</Label>
+        <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2">
+              <Webhook className="size-4 text-[oklch(0.85_0.18_255)]" />
+              Webhook
+            </CardTitle>
+            <CardDescription>Send alerts to any HTTP endpoint.</CardDescription>
           </div>
-          {webhookEnabled && (
+          <div className="flex items-center gap-2">
+            <Label className="text-sm text-muted-foreground">
+              {webhookEnabled ? "Enabled" : "Disabled"}
+            </Label>
+            <Switch
+              checked={webhookEnabled}
+              onCheckedChange={(v) =>
+                set("reporter.webhook.enabled", v ? "1" : "0")
+              }
+            />
+          </div>
+        </CardHeader>
+        {webhookEnabled && (
+          <CardContent className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="wh-url">URL</Label>
-              <Input id="wh-url" value={webhookUrl} placeholder="https://hooks.example.com/alert" onChange={(e) => set("reporter.webhook.url", e.target.value)} />
+              <Input
+                id="wh-url"
+                value={webhookUrl}
+                placeholder="https://hooks.example.com/alert"
+                onChange={(e) => set("reporter.webhook.url", e.target.value)}
+                className="font-mono"
+              />
             </div>
-          )}
-          {webhookEnabled && (
-            <Button variant="outline" size="sm" onClick={() => sendTest("webhook")} disabled={webhookTesting || !webhookUrl}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => sendTest("webhook")}
+              disabled={webhookTesting || !webhookUrl}
+            >
+              {webhookTesting ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <Send className="size-3" />
+              )}
               {webhookTesting ? "Sending..." : "Send Test"}
             </Button>
-          )}
-        </CardContent>
+          </CardContent>
+        )}
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>ntfy</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Switch checked={ntfyEnabled} onCheckedChange={(v) => set("reporter.ntfy.enabled", v ? "1" : "0")} />
-            <Label>{ntfyEnabled ? "Enabled" : "Disabled"}</Label>
+        <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2">
+              <Hash className="size-4 text-[oklch(0.82_0.2_295)]" />
+              ntfy
+            </CardTitle>
+            <CardDescription>
+              Push alerts via the ntfy.sh service.
+            </CardDescription>
           </div>
-          {ntfyEnabled && (
-            <>
-              <div className="space-y-1.5">
-                <Label htmlFor="ntfy-server">Server URL</Label>
-                <Input id="ntfy-server" value={ntfyServerUrl} onChange={(e) => set("reporter.ntfy.serverUrl", e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="ntfy-topic">Topic</Label>
-                <Input id="ntfy-topic" value={ntfyTopic} placeholder="my-alerts" onChange={(e) => set("reporter.ntfy.topic", e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="ntfy-priority">Priority</Label>
-                <Select value={ntfyPriority} onValueChange={(v) => set("reporter.ntfy.priority", v)}>
-                  <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="min">min</SelectItem>
-                    <SelectItem value="low">low</SelectItem>
-                    <SelectItem value="default">default</SelectItem>
-                    <SelectItem value="high">high</SelectItem>
-                    <SelectItem value="urgent">urgent</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="ntfy-token">Auth token (optional)</Label>
-                <Input id="ntfy-token" type="password" value={ntfyToken} placeholder="tk_..." onChange={(e) => set("reporter.ntfy.token", e.target.value)} autoComplete="off" />
-              </div>
-              <Button variant="outline" size="sm" onClick={() => sendTest("ntfy")} disabled={ntfyTesting || !ntfyTopic}>
-                {ntfyTesting ? "Sending..." : "Send Test"}
-              </Button>
-            </>
-          )}
-        </CardContent>
+          <div className="flex items-center gap-2">
+            <Label className="text-sm text-muted-foreground">
+              {ntfyEnabled ? "Enabled" : "Disabled"}
+            </Label>
+            <Switch
+              checked={ntfyEnabled}
+              onCheckedChange={(v) =>
+                set("reporter.ntfy.enabled", v ? "1" : "0")
+              }
+            />
+          </div>
+        </CardHeader>
+        {ntfyEnabled && (
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="ntfy-server">Server URL</Label>
+              <Input
+                id="ntfy-server"
+                value={ntfyServerUrl}
+                onChange={(e) => set("reporter.ntfy.serverUrl", e.target.value)}
+                className="font-mono"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ntfy-topic">Topic</Label>
+              <Input
+                id="ntfy-topic"
+                value={ntfyTopic}
+                placeholder="my-alerts"
+                onChange={(e) => set("reporter.ntfy.topic", e.target.value)}
+                className="font-mono"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ntfy-priority">Priority</Label>
+              <Select
+                value={ntfyPriority}
+                onValueChange={(v) => set("reporter.ntfy.priority", v ?? "")}
+              >
+                <SelectTrigger className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="min">min</SelectItem>
+                  <SelectItem value="low">low</SelectItem>
+                  <SelectItem value="default">default</SelectItem>
+                  <SelectItem value="high">high</SelectItem>
+                  <SelectItem value="urgent">urgent</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ntfy-token">Auth token (optional)</Label>
+              <Input
+                id="ntfy-token"
+                type="password"
+                value={ntfyToken}
+                placeholder="tk_..."
+                onChange={(e) => set("reporter.ntfy.token", e.target.value)}
+                autoComplete="off"
+                className="font-mono"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => sendTest("ntfy")}
+              disabled={ntfyTesting || !ntfyTopic}
+            >
+              {ntfyTesting ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <Send className="size-3" />
+              )}
+              {ntfyTesting ? "Sending..." : "Send Test"}
+            </Button>
+          </CardContent>
+        )}
       </Card>
 
-      <Button onClick={handleSave} disabled={saving}>
-        {saving ? "Saving..." : "Save Alerting Settings"}
-      </Button>
+      <div className="flex justify-end">
+        <Button onClick={handleSave} disabled={saving}>
+          {saving ? (
+            <Loader2 className="size-3 animate-spin" />
+          ) : (
+            <Save className="size-3" />
+          )}
+          {saving ? "Saving..." : "Save Alerting Settings"}
+        </Button>
+      </div>
     </div>
+  );
+}
+
+function ModeOption({
+  active,
+  title,
+  description,
+  onClick,
+}: {
+  active: boolean;
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "group flex w-full flex-col items-start gap-1 rounded-xl border p-3.5 text-left transition-all",
+        active
+          ? "border-[oklch(0.72_0.18_255/0.5)] bg-gradient-to-br from-[oklch(0.6_0.22_264/0.12)] to-transparent shadow-[0_4px_14px_-6px_oklch(0.6_0.22_264/0.4)]"
+          : "border-border/60 bg-card/40 hover:border-border hover:bg-accent/40",
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className={cn(
+            "flex size-4 items-center justify-center rounded-full border-2 transition-colors",
+            active
+              ? "border-[oklch(0.72_0.18_255)] bg-[oklch(0.72_0.18_255)]"
+              : "border-border",
+          )}
+        >
+          {active && <span className="size-1.5 rounded-full bg-white" />}
+        </span>
+        <span className="text-sm font-medium">{title}</span>
+      </div>
+      <p className="pl-6 text-xs text-muted-foreground">{description}</p>
+    </button>
   );
 }

@@ -18,7 +18,8 @@ function readEnvFile(): Record<string, string> {
       const key = trimmed.slice(0, eq).trim();
       const val = trimmed.slice(eq + 1).trim();
       // Never expose password hash/salt
-      if (key === "AUTH_PASSWORD_SALT" || key === "AUTH_PASSWORD_HASH") continue;
+      if (key === "AUTH_PASSWORD_SALT" || key === "AUTH_PASSWORD_HASH")
+        continue;
       result[key] = val;
     }
     return result;
@@ -62,7 +63,7 @@ function writeEnvFile(updates: Record<string, string>): void {
 export const Route = createFileRoute("/api/settings/general")({
   server: {
     handlers: {
-      GET: async ({}) => {
+      GET: async () => {
         const session = getSession();
         if (!session) return new Response("Unauthorized", { status: 401 });
 
