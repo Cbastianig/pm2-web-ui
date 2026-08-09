@@ -191,14 +191,19 @@ function formatSampleTime(t: number) {
 
 function Sparkline({
   data,
-  format,
-  color = "oklch(0.78 0.18 255)",
+  color,
+  hoverIdx,
+  onHover,
+  showTooltip,
+  tooltip,
 }: {
   data: Array<{ t: number; value: number }>;
-  format: (value: number) => string;
-  color?: string;
+  color: string;
+  hoverIdx: number | null;
+  onHover: (idx: number | null) => void;
+  showTooltip?: boolean;
+  tooltip: (idx: number) => React.ReactNode;
 }) {
-  const [hover, setHover] = useState<{ x: number; idx: number } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   if (data.length < 2) {
@@ -223,18 +228,17 @@ function Sparkline({
     const x = e.clientX - rect.left;
     const frac = Math.min(1, Math.max(0, x / rect.width));
     const idx = Math.round(frac * (data.length - 1));
-    setHover({ x: (idx / (data.length - 1)) * w, idx });
+    onHover(idx);
   }
 
-  const hoverPoint = hover ? points[hover.idx] : null;
-  const hoverData = hover ? data[hover.idx] : null;
+  const hoverPoint = hoverIdx != null ? points[hoverIdx] : null;
 
   return (
     <div
       ref={wrapRef}
       className="relative h-10 w-full"
       onMouseMove={handleMove}
-      onMouseLeave={() => setHover(null)}
+      onMouseLeave={() => onHover(null)}
     >
       <svg
         viewBox={`0 0 ${w} ${h}`}
@@ -287,19 +291,14 @@ function Sparkline({
           />
         )}
       </svg>
-      {hoverData && hoverPoint && (
+      {hoverPoint && hoverIdx != null && showTooltip && (
         <div
           className="pointer-events-none absolute bottom-full z-10 mb-1.5 w-max -translate-x-1/2 rounded-md border border-border/60 bg-popover/95 px-2 py-1 text-xs shadow-lg backdrop-blur-md"
           style={{
             left: `${Math.min(90, Math.max(10, (hoverPoint.x / w) * 100))}%`,
           }}
         >
-          <div className="font-semibold tabular-nums">
-            {format(hoverData.value)}
-          </div>
-          <div className="text-muted-foreground tabular-nums">
-            {formatSampleTime(hoverData.t)}
-          </div>
+          {tooltip(hoverIdx)}
         </div>
       )}
     </div>
@@ -319,6 +318,10 @@ function MetricsTab({ proc }: { proc: ProcessItem }) {
   const [history, setHistory] = useState<
     Array<{ t: number; cpu: number; memory: number }>
   >([]);
+  const [hover, setHover] = useState<{
+    idx: number;
+    source: "cpu" | "memory";
+  } | null>(null);
 
   useEffect(() => {
     setHistory([]);
@@ -411,8 +414,28 @@ function MetricsTab({ proc }: { proc: ProcessItem }) {
           <div className="mt-2">
             <Sparkline
               data={combined.map((s) => ({ t: s.t, value: s.cpu }))}
-              format={(v) => `${v.toFixed(1)}%`}
               color="oklch(0.78 0.17 75)"
+              hoverIdx={hover?.idx ?? null}
+              onHover={(idx) =>
+                setHover(idx == null ? null : { idx, source: "cpu" })
+              }
+              showTooltip={hover?.source === "cpu"}
+              tooltip={(i) => {
+                const s = combined[i]!;
+                return (
+                  <>
+                    <div className="font-semibold tabular-nums">
+                      CPU {s.cpu.toFixed(1)}%
+                    </div>
+                    <div className="tabular-nums">
+                      Memory {formatBytes(s.memory)}
+                    </div>
+                    <div className="text-muted-foreground tabular-nums">
+                      {formatSampleTime(s.t)}
+                    </div>
+                  </>
+                );
+              }}
             />
           </div>
         </div>
@@ -428,8 +451,28 @@ function MetricsTab({ proc }: { proc: ProcessItem }) {
           <div className="mt-2">
             <Sparkline
               data={combined.map((s) => ({ t: s.t, value: s.memory }))}
-              format={(v) => formatBytes(v)}
               color="oklch(0.78 0.16 220)"
+              hoverIdx={hover?.idx ?? null}
+              onHover={(idx) =>
+                setHover(idx == null ? null : { idx, source: "memory" })
+              }
+              showTooltip={hover?.source === "memory"}
+              tooltip={(i) => {
+                const s = combined[i]!;
+                return (
+                  <>
+                    <div className="font-semibold tabular-nums">
+                      CPU {s.cpu.toFixed(1)}%
+                    </div>
+                    <div className="tabular-nums">
+                      Memory {formatBytes(s.memory)}
+                    </div>
+                    <div className="text-muted-foreground tabular-nums">
+                      {formatSampleTime(s.t)}
+                    </div>
+                  </>
+                );
+              }}
             />
           </div>
         </div>

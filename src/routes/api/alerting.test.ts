@@ -8,7 +8,7 @@ export const Route = createFileRoute("/api/alerting/test")({
         const session = getSession();
         if (!session) return new Response("Unauthorized", { status: 401 });
 
-        const body = (await request.json()) as {
+        let body: {
           type: "webhook" | "ntfy";
           url?: string;
           headers?: { key: string; value: string }[];
@@ -18,6 +18,17 @@ export const Route = createFileRoute("/api/alerting/test")({
           priority?: string;
           token?: string;
         };
+        try {
+          body = await request.json();
+        } catch {
+          return Response.json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
+        }
+        if (!body || typeof body !== "object" || Array.isArray(body)) {
+          return Response.json(
+            { ok: false, error: "Invalid test configuration" },
+            { status: 400 },
+          );
+        }
 
         const payload = {
           logLevel: "error",

@@ -106,14 +106,30 @@ function ChartTooltip({
   formatValue,
 }: any) {
   if (!active || !payload?.length) return null;
-  const item = payload[0];
   return (
     <div className="rounded-lg border border-border/60 bg-popover/90 px-3 py-2 text-xs shadow-xl backdrop-blur-md">
-      <p className="font-medium tabular-nums">
-        {formatValue
-          ? formatValue(item.value)
-          : `${Number(item.value).toFixed(1)}${unit ?? "%"}`}
-      </p>
+      {payload.map((item: any) => {
+        const isCpu = item.dataKey === "cpu" || item.name === "cpu";
+        const isMem = item.dataKey === "memory" || item.name === "memory";
+        let value: string;
+        if (isMem) value = formatBytes(Number(item.value));
+        else if (formatValue) value = formatValue(item.value);
+        else value = `${Number(item.value).toFixed(1)}${unit ?? "%"}`;
+        return (
+          <p
+            key={item.dataKey ?? item.name ?? "value"}
+            className={cn(
+              "font-medium tabular-nums",
+              isCpu && "text-[oklch(0.88_0.17_75)]",
+              isMem && "text-[oklch(0.85_0.16_220)]",
+            )}
+          >
+            {isCpu && "CPU "}
+            {isMem && "Memory "}
+            {value}
+          </p>
+        );
+      })}
       <p className="text-muted-foreground tabular-nums">
         {tooltipLabel(Number(label), rangeMs)}
       </p>
