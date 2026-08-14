@@ -93,6 +93,7 @@ interface EventStore {
   host: HostInfo | null;
   opsApps: OpsApp[];
   opsUnconfigured: { dirName: string; appPath: string }[];
+  opsLoaded: boolean;
   lastUpdate: number;
   setProcesses: (processes: ProcessInfo[]) => void;
   setConnected: (connected: boolean) => void;
@@ -107,12 +108,14 @@ export const useEventStore = create<EventStore>((set) => ({
   host: null,
   opsApps: [],
   opsUnconfigured: [],
+  opsLoaded: false,
   lastUpdate: 0,
   setProcesses: (processes) => set({ processes, lastUpdate: Date.now() }),
   setConnected: (connected) => set({ connected }),
   setHost: (host) => set({ host }),
-  setOpsApps: (opsApps) => set({ opsApps }),
-  setOpsUnconfigured: (opsUnconfigured) => set({ opsUnconfigured }),
+  setOpsApps: (opsApps) => set({ opsApps, opsLoaded: true }),
+  setOpsUnconfigured: (opsUnconfigured) =>
+    set({ opsUnconfigured, opsLoaded: true }),
 }));
 
 let globalEventSource: EventSource | null = null;
@@ -215,6 +218,17 @@ export function useOpsSource() {
     };
   }, []);
   return useEventStore((s) => s.opsApps);
+}
+
+export function useOpsLoaded() {
+  useEffect(() => {
+    listenerCount++;
+    connectGlobal();
+    return () => {
+      listenerCount--;
+    };
+  }, []);
+  return useEventStore((s) => s.opsLoaded);
 }
 
 export function useOpsUnconfigured() {

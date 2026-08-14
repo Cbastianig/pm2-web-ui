@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useOpsSource, useOpsUnconfigured } from "@/hooks/useEventSource";
+import { useOpsSource, useOpsUnconfigured, useOpsLoaded } from "@/hooks/useEventSource";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -46,9 +46,10 @@ function formatSince(ts: number | null): string {
 function OpsDashboard() {
   const apps = useOpsSource();
   const unconfigured = useOpsUnconfigured();
+  const opsLoaded = useOpsLoaded();
   const [configDir, setConfigDir] = useState<string | null>(null);
 
-  if (!apps.length) {
+  if (!opsLoaded) {
     return (
       <div className="space-y-6">
         <PageHeader
@@ -79,6 +80,66 @@ function OpsDashboard() {
             ))}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  if (!apps.length) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title="Operations"
+          description="Application monitoring and deployment status"
+          icon={<LayoutDashboard />}
+        />
+        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border/60 bg-card/40 py-12 backdrop-blur-sm">
+          <Settings2 className="size-10 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">
+            No configured applications found.
+          </p>
+          <p className="max-w-md text-center text-xs text-muted-foreground">
+            Add an <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">ops.config.json</code> to a
+            project directory to start monitoring it here.
+          </p>
+        </div>
+
+        {unconfigured.length > 0 && (
+          <div>
+            <PageHeader
+              title="Unconfigured projects"
+              description={`${unconfigured.length} director${unconfigured.length !== 1 ? "ies" : "y"} without an ops.config.json`}
+              icon={<Rocket />}
+              className="mb-4"
+            />
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {unconfigured.map((u) => (
+                <Card key={u.dirName} className="card-elevated">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">{u.dirName}</CardTitle>
+                    <p className="text-xs text-muted-foreground">
+                      No config detected
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => setConfigDir(u.dirName)}
+                    >
+                      <Settings2 className="size-3.5" /> Create config
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <OpsConfigDialog
+          dirName={configDir ?? ""}
+          open={configDir !== null}
+          onOpenChange={(open) => !open && setConfigDir(null)}
+        />
       </div>
     );
   }
