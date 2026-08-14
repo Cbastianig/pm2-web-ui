@@ -6,7 +6,8 @@ import viteTsConfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const basePath = env.BASE_PATH || "/";
+  const rawBase = env.BASE_PATH || "/";
+  const basePath = rawBase === "/" ? "/" : `/${rawBase.replace(/^\/+|\/+$/g, "")}/`;
   return {
   base: basePath,
   server: {

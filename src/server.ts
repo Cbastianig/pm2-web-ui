@@ -3,6 +3,7 @@ import { initDb } from "@/server/storage/client";
 import { startLogBus } from "@/server/events/logBus";
 import { initAlerting } from "@/server/alerting";
 import { startAppManager } from "@/server/ops";
+import { serveStatic } from "@/server/static";
 
 initDb();
 startLogBus();
@@ -84,6 +85,8 @@ setInterval(() => {
 
 export default createServerEntry({
   async fetch(request) {
+    const staticResponse = await serveStatic(request);
+    if (staticResponse) return staticResponse;
     return handler.fetch(request);
   },
 });

@@ -2,10 +2,12 @@ import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 
 export function getRouter() {
+  const basepath =
+    import.meta.env.BASE_URL.replace(/\/$/, "") || "/";
   const router = createRouter({
     routeTree,
     scrollRestoration: true,
-    basepath: process.env.BASE_PATH || "/",
+    basepath,
     trailingSlash: "never",
   });
 
