@@ -51,6 +51,7 @@ pnpm start
 | AUTH_PASSWORD_SALT | required | Hex-encoded scrypt salt |
 | AUTH_PASSWORD_HASH | required | Hex-encoded scrypt hash (64 bytes) |
 | SESSION_TTL_MS | 28800000 | Session lifetime (8h) |
+| JWT_SECRET | required | JWT signing secret (min 32 chars) |
 | TRUST_PROXY | 0 | Set to `1` only when behind a trusted reverse proxy |
 | SQLITE_DB_PATH | ./data/pm2-process-web-ui.db | SQLite database path |
 
