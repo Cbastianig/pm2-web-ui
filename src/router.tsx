@@ -6,7 +6,7 @@ export function getRouter() {
     routeTree,
     scrollRestoration: true,
     basepath: process.env.BASE_PATH || "/",
-    trailingSlash: "always",
+    trailingSlash: "never",
   });
 
   return router;
