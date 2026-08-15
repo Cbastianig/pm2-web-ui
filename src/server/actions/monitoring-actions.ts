@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { getDb } from "@/server/storage/client";
 import { monitoring, logEntries, processMetrics, alertPrefs, hostMetrics } from "@/server/storage/schema";
+import { findMonitorId, queryStoredLogs, getStoredLogsBounds } from "@/server/storage/logQueries";
 import { eq, desc, gte, asc, lte, and, min, max } from "drizzle-orm";
 import { authMiddleware } from "@/server/auth/middleware";
 
@@ -105,22 +106,42 @@ export const getStoredLogsFn = createServerFn({ method: "GET" })
   .validator(z.object({ processName: z.string(), limit: z.number().default(1000) }))
   .handler(async ({ data }) => {
     const db = getDb();
-    const mon = db
-      .select()
-      .from(monitoring)
-      .where(eq(monitoring.pm2Name, data.processName))
-      .all();
-    if (mon.length === 0) return { entries: [] };
+    const monitorId = findMonitorId(db, data.processName);
+    if (monitorId == null) return { entries: [] };
+    return { entries: queryStoredLogs(db, monitorId, { limit: data.limit }) };
+  });
 
-    const entries = db
-      .select()
-      .from(logEntries)
-      .where(eq(logEntries.monitorId, mon[0]!.id))
-      .orderBy(desc(logEntries.loggedAt))
-      .limit(data.limit)
-      .all();
+export const getStoredLogsRangeFn = createServerFn({ method: "GET" })
+  .middleware(auth())
+  .validator(
+    z.object({
+      processName: z.string(),
+      from: z.number().int().optional(),
+      to: z.number().int().optional(),
+      limit: z.number().int().optional(),
+    })
+  )
+  .handler(async ({ data }) => {
+    const db = getDb();
+    const monitorId = findMonitorId(db, data.processName);
+    if (monitorId == null) return { entries: [] };
+    return {
+      entries: queryStoredLogs(db, monitorId, {
+        from: data.from,
+        to: data.to,
+        limit: data.limit,
+      }),
+    };
+  });
 
-    return { entries: entries.reverse() };
+export const getStoredLogsBoundsFn = createServerFn({ method: "GET" })
+  .middleware(auth())
+  .validator(z.object({ processName: z.string() }))
+  .handler(async ({ data }) => {
+    const db = getDb();
+    const monitorId = findMonitorId(db, data.processName);
+    if (monitorId == null) return { min: null, max: null };
+    return getStoredLogsBounds(db, monitorId);
   });
 
 export const getProcessMetricsFn = createServerFn({ method: "GET" })

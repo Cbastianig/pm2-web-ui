@@ -12,6 +12,7 @@ import {
   readLogLinesByName,
 } from "@/server/pm2";
 import { authMiddleware } from "@/server/auth/middleware";
+import { detectLogLevel } from "@/server/events/logBus";
 
 const auth = () => [authMiddleware];
 
@@ -93,21 +94,5 @@ export const readLogsFn = createServerFn({ method: "GET" })
   .validator(z.object({ pm2Name: z.string() }))
   .handler(async ({ data }) => {
     const lines = await readLogLinesByName(data.pm2Name);
-    // Detect log levels (same logic as logBus)
-    const detectLevel = (text: string): string => {
-      if (/"level"\s*:\s*"(?:error|fatal|critical)"/i.test(text)) return "error";
-      if (/"level"\s*:\s*"warn(?:ing)?"/i.test(text)) return "warn";
-      if (/"level"\s*:\s*"info"/i.test(text)) return "info";
-      if (/"level"\s*:\s*"(?:debug|trace|verbose)"/i.test(text)) return "debug";
-      if (/\[(?:error|fatal|crit(?:ical)?)\]|\((?:error|fatal|crit(?:ical)?)\)/i.test(text)) return "error";
-      if (/\[warn(?:ing)?\]|\(warn(?:ing)?\)/i.test(text)) return "warn";
-      if (/\[info\]|\(info\)/i.test(text)) return "info";
-      if (/\[(?:debug|trace|verbose)\]|\((?:debug|trace|verbose)\)/i.test(text)) return "debug";
-      if (/(?:^|[\s|])(?:ERROR|FATAL|CRITICAL|EXCEPTION|CRIT)(?:[:\s|]|$)/.test(text)) return "error";
-      if (/(?:^|[\s|])WARN(?:ING)?(?:[:\s|]|$)/.test(text)) return "warn";
-      if (/(?:^|[\s|])INFO(?:[:\s|]|$)/.test(text)) return "info";
-      if (/(?:^|[\s|])(?:DEBUG|TRACE|VERBOSE)(?:[:\s|]|$)/.test(text)) return "debug";
-      return "";
-    };
-    return lines.map((l) => ({ text: l.text, level: detectLevel(l.text) }));
+    return lines.map((l) => ({ text: l.text, level: detectLogLevel(l.text) }));
   });

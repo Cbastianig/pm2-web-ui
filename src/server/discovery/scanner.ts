@@ -56,6 +56,7 @@ export function scanAll(scanPath: string): {
 
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith(".")) continue;
       const fullPath = path.join(scanPath, entry.name);
       const parsed = parseOpsConfig(fullPath);
       if (parsed) {
