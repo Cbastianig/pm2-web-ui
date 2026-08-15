@@ -245,7 +245,7 @@ function AlertingSettingsTab() {
       .then((r) => r.json())
       .then((data) => setSettings(data.settings ?? {}))
       .catch(() => toast.error("Failed to load settings"))
-      .finally(() => setLoading(true));
+      .finally(() => setLoading(false));
   }, []);
 
   function set(key: string, value: string) {
