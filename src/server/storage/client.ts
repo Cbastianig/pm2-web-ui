@@ -6,6 +6,7 @@ import path from "node:path";
 import fs from "node:fs";
 
 let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
+let _sqlite: Database.Database | null = null;
 
 export function getDb() {
   if (_db) return _db;
@@ -21,8 +22,15 @@ export function getDb() {
   sqlite.pragma("foreign_keys = ON");
   sqlite.pragma("busy_timeout = 5000");
 
+  _sqlite = sqlite;
   _db = drizzle(sqlite, { schema });
   return _db;
+}
+
+export function closeDb() {
+  if (_sqlite) _sqlite.close();
+  _sqlite = null;
+  _db = null;
 }
 
 export function initDb() {
@@ -117,6 +125,31 @@ export function initDb() {
       disk_used REAL DEFAULT 0,
       disk_total REAL DEFAULT 0
     )
+  `);
+
+  sqlite(`
+    CREATE INDEX IF NOT EXISTS idx_log_entries_monitor_id
+      ON log_entries(monitor_id)
+  `);
+
+  sqlite(`
+    CREATE INDEX IF NOT EXISTS idx_log_entries_logged_at
+      ON log_entries(logged_at)
+  `);
+
+  sqlite(`
+    CREATE INDEX IF NOT EXISTS idx_process_metrics_monitor_id
+      ON process_metrics(monitor_id)
+  `);
+
+  sqlite(`
+    CREATE INDEX IF NOT EXISTS idx_process_metrics_sampled_at
+      ON process_metrics(sampled_at)
+  `);
+
+  sqlite(`
+    CREATE INDEX IF NOT EXISTS idx_host_metrics_sampled_at
+      ON host_metrics(sampled_at)
   `);
 
   sqlite(`

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { _resetEnv } from "../src/lib/env";
-import { getDb, initDb } from "../src/server/storage/client";
+import { getDb, initDb, closeDb } from "../src/server/storage/client";
 import { monitoring, logEntries } from "../src/server/storage/schema";
 import {
   findMonitorId,
@@ -21,7 +21,13 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  closeDb();
+  fs.rmSync(tmpDir, {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 100,
+  });
 });
 
 function cleanDb() {
@@ -116,6 +122,30 @@ describe("queryStoredLogs", () => {
     const entries = queryStoredLogs(getDb(), mon, { from: T1, to: T1 });
 
     expect(entries.map((e) => e.raw)).toEqual(["second"]);
+  });
+
+  it("filters strictly by selected levels, excluding unleveled lines", () => {
+    const mon = seedMonitor("app-a");
+    seedEntry(mon, T0, "boom", "error");
+    seedEntry(mon, T1, "warned", "warn");
+    seedEntry(mon, T2, "note", "info");
+    seedEntry(mon, T3, "plain");
+
+    const entries = queryStoredLogs(getDb(), mon, {
+      levels: ["error", "warn"],
+    });
+
+    expect(entries.map((e) => e.raw)).toEqual(["boom", "warned"]);
+  });
+
+  it("applies no level filter when the levels list is empty", () => {
+    const mon = seedMonitor("app-a");
+    seedEntry(mon, T0, "boom", "error");
+    seedEntry(mon, T1, "note", "info");
+
+    const entries = queryStoredLogs(getDb(), mon, { levels: [] });
+
+    expect(entries.map((e) => e.raw)).toEqual(["boom", "note"]);
   });
 
   it("combines a range with a limit (most recent window)", () => {

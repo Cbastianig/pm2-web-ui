@@ -1,11 +1,14 @@
 import os from "node:os";
-import { execSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { getDb } from "@/server/storage/client";
 import { hostMetrics } from "@/server/storage/schema";
 import { readEnv } from "@/lib/env";
 import { lte, desc } from "drizzle-orm";
 
 let lastCpus: os.CpuInfo[] | null = null;
+
+const execFileAsync = promisify(execFile);
 
 function cpuTotalTicks(cpu: os.CpuInfo): number {
   return (
@@ -26,7 +29,7 @@ export interface HostSnapshot {
   diskTotal: number;
 }
 
-export function collectHostMetrics(): HostSnapshot {
+export async function collectHostMetrics(): Promise<HostSnapshot> {
   const cpus = os.cpus();
 
   let cpuPercent = 0;
@@ -54,11 +57,11 @@ export function collectHostMetrics(): HostSnapshot {
   let diskUsed = 0;
   let diskTotal = 0;
   try {
-    const df = execSync(`df -B1 "${homeDir}"`, {
+    const { stdout } = await execFileAsync("df", ["-B1", homeDir], {
       encoding: "utf8",
       timeout: 3000,
     });
-    const lines = df.trim().split("\n");
+    const lines = stdout.trim().split("\n");
     if (lines.length > 1) {
       const cols = lines[1]!.trim().split(/\s+/);
       if (cols.length >= 4) {

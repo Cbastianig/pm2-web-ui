@@ -3,8 +3,9 @@ import { promisify } from "node:util";
 import { eventBus } from "./bus";
 import { extractTimestamp } from "../pm2";
 import { getDb } from "../storage/client";
-import { monitoring, logEntries } from "../storage/schema";
-import { eq } from "drizzle-orm";
+import { logEntries } from "../storage/schema";
+import { getMonitorId } from "../storage/monitorCache";
+import { readEnv } from "@/lib/env";
 
 const pm2Connect = promisify(pm2.connect.bind(pm2));
 
@@ -41,70 +42,176 @@ export function detectLogLevel(text: string): string {
 }
 
 let started = false;
+let busSock: NodeJS.EventEmitter | null = null;
+let reconnecting = false;
+let retryAttempt = 0;
+
+const MAX_RECONNECT_DELAY_MS = 60_000;
+
+function onDisconnect() {
+  if (reconnecting) return;
+  console.error("[logBus] PM2 bus disconnected, reconnecting...");
+  scheduleReconnect();
+}
+
+function scheduleReconnect() {
+  if (reconnecting) return;
+  reconnecting = true;
+
+  if (busSock && typeof (busSock as any).close === "function") {
+    try {
+      (busSock as any).close();
+    } catch {}
+  }
+  busSock = null;
+
+  const delay = Math.min(1000 * 2 ** retryAttempt, MAX_RECONNECT_DELAY_MS);
+  retryAttempt++;
+
+  setTimeout(async () => {
+    try {
+      await connectBus();
+      retryAttempt = 0;
+      reconnecting = false;
+      console.warn("[logBus] Reconnected to PM2 bus");
+    } catch (e) {
+      reconnecting = false;
+      console.error(
+        "[logBus] Reconnect attempt failed:",
+        (e as Error).message,
+      );
+      scheduleReconnect();
+    }
+  }, delay).unref();
+}
+
+async function connectBus() {
+  await pm2Connect();
+  const { bus, sock } = await new Promise<{
+    bus: NodeJS.EventEmitter;
+    sock: NodeJS.EventEmitter;
+  }>((resolve, reject) => {
+    pm2.launchBus((err: Error | null, bus: any, ...rest: any[]) => {
+      const sock = rest[0] as NodeJS.EventEmitter;
+      if (err) reject(err);
+      else resolve({ bus, sock });
+    });
+  });
+
+  bus.on("log:out", handlePacket);
+  bus.on("log:err", handlePacket);
+  sock.on("close", onDisconnect);
+  sock.on("error", onDisconnect);
+  sock.on("disconnect", onDisconnect);
+  busSock = sock;
+}
+
+interface TokenBucket {
+  tokens: number;
+  last: number;
+}
+
+const buckets = new Map<string, TokenBucket>();
+
+function takeTokens(name: string, count: number): number {
+  const maxPerSec = readEnv("LOG_MAX_LINES_PER_SECOND");
+  const burst = readEnv("LOG_MAX_BURST");
+  const now = Date.now();
+  let bucket = buckets.get(name);
+  if (!bucket) {
+    bucket = { tokens: burst, last: now };
+    buckets.set(name, bucket);
+  }
+  const elapsed = (now - bucket.last) / 1000;
+  bucket.tokens = Math.min(burst, bucket.tokens + elapsed * maxPerSec);
+  bucket.last = now;
+  const allowed = Math.min(count, Math.floor(bucket.tokens));
+  bucket.tokens = Math.max(0, bucket.tokens - allowed);
+  return allowed;
+}
+
+function clampTimestamp(value: number): number {
+  const now = Date.now();
+  return value > now ? now : value;
+}
+
+export function handlePacket(packet: any) {
+  const appName = packet.process?.name;
+  if (!appName) return;
+
+  const rawData = String(packet.data ?? "");
+  const lines = rawData.split(/\r?\n/).filter((l: string) => l.length > 0);
+  if (lines.length === 0) return;
+
+  const monitorId = getMonitorId(appName);
+  const at =
+    typeof packet.at === "number" && packet.at > 0 ? packet.at : Date.now();
+
+  const parsed = lines.map((text) => ({
+    text,
+    level: detectLogLevel(text),
+  }));
+
+  const allowed = takeTokens(appName, parsed.length);
+  const kept = allowed > 0 ? parsed.slice(0, allowed) : [];
+  const dropped = parsed.length - kept.length;
+
+  if (monitorId != null && kept.length > 0) {
+    try {
+      const db = getDb();
+      db.transaction((tx) => {
+        tx.insert(logEntries)
+          .values(
+            kept.map(({ text, level }) => {
+              const ts = extractTimestamp(text);
+              const loggedAt = clampTimestamp(
+                ts ? new Date(ts.replace(" ", "T")).getTime() || at : at,
+              );
+              return {
+                monitorId,
+                loggedAt,
+                logLevel: level,
+                log: JSON.stringify({ lines: [text], raw: text }),
+                raw: text,
+              };
+            }),
+          )
+          .run();
+      });
+    } catch {
+      // never let storage errors affect streaming
+    }
+  }
+
+  for (const { text, level } of kept) {
+    eventBus.emit("log", { text, processName: appName, level });
+  }
+
+  if (dropped > 0) {
+    eventBus.emit("log", {
+      text: `[rate limited] ${dropped} line(s) discarded for ${appName}`,
+      processName: appName,
+      level: "warn",
+    });
+  }
+}
 
 export async function startLogBus() {
   if (started) return;
   started = true;
 
   try {
-    await pm2Connect();
-    const { bus } = await new Promise<{
-      bus: NodeJS.EventEmitter;
-    }>((resolve, reject) => {
-      pm2.launchBus((err: Error | null, bus) => {
-        if (err) reject(err);
-        else resolve({ bus });
-      });
-    });
-
-    function handlePacket(packet: any) {
-      const appName = packet.process?.name;
-      if (!appName) return;
-
-      const rawData = String(packet.data ?? "");
-      const lines = rawData.split(/\r?\n/).filter((l: string) => l.length > 0);
-
-      for (const text of lines) {
-        const level = detectLogLevel(text);
-
-        try {
-          const db = getDb();
-          const rows = db
-            .select()
-            .from(monitoring)
-            .where(eq(monitoring.pm2Name, appName))
-            .all();
-          if (rows.length > 0) {
-            const at =
-              typeof packet.at === "number" && packet.at > 0
-                ? packet.at
-                : Date.now();
-            const ts = extractTimestamp(text);
-            const loggedAt = ts
-              ? new Date(ts.replace(" ", "T")).getTime() || at
-              : at;
-            db.insert(logEntries)
-              .values({
-                monitorId: rows[0]!.id,
-                loggedAt,
-                logLevel: level,
-                log: JSON.stringify({ lines: [text], raw: text }),
-                raw: text,
-              })
-              .run();
-          }
-        } catch {
-          // never let storage errors affect streaming
-        }
-
-        eventBus.emit("log", { text, processName: appName, level });
-      }
-    }
-
-    bus.on("log:out", handlePacket);
-    bus.on("log:err", handlePacket);
-    bus.on("error", () => {});
-  } catch {
-    started = false;
+    await connectBus();
+  } catch (e) {
+    console.error("[logBus] Initial connection failed:", (e as Error).message);
+    scheduleReconnect();
   }
+}
+
+// For tests only — resets the connection state
+export function _resetLogBus() {
+  started = false;
+  busSock = null;
+  reconnecting = false;
+  retryAttempt = 0;
 }

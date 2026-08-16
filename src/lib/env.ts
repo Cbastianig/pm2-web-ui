@@ -31,6 +31,10 @@ const envSchema = z.object({
     .number()
     .int()
     .default(14 * 24 * 60 * 60 * 1000),
+  MAX_LOG_LINES_PER_MONITOR: z.coerce.number().int().default(50_000),
+  MAX_METRIC_SAMPLES_PER_MONITOR: z.coerce.number().int().default(10_000),
+  LOG_MAX_LINES_PER_SECOND: z.coerce.number().int().default(200),
+  LOG_MAX_BURST: z.coerce.number().int().default(1_000),
   SQLITE_DB_PATH: z.string().default("./data/pm2-process-web-ui.db"),
   DEPLOY_BASE_DIR: z.string().default("./apps"),
   OPS_APPS_PATH: z.string().default("/mnt/sdc1/www"),

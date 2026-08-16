@@ -197,6 +197,9 @@ export function ProcessLogs({
   const [downloadMode, setDownloadMode] = useState<
     "visible" | "all" | "range"
   >("visible");
+  const [downloadLevels, setDownloadLevels] = useState<Set<string>>(
+    new Set(["error", "warn", "info", "debug"]),
+  );
   const [downloading, setDownloading] = useState(false);
   const [rangeFrom, setRangeFrom] = useState(() =>
     dayjs().startOf("day").toDate(),
@@ -329,6 +332,22 @@ export function ProcessLogs({
     });
   }
 
+  function toggleDownloadLevel(level: string) {
+    setDownloadLevels((prev) => {
+      const next = new Set(prev);
+      if (next.has(level)) next.delete(level);
+      else next.add(level);
+      return next;
+    });
+  }
+
+  const includesLevel = useCallback(
+    (line: { text: string; level: string }) =>
+      downloadLevels.size === 4 ||
+      (line.level !== "" && downloadLevels.has(line.level)),
+    [downloadLevels],
+  );
+
   const copyLogs = useCallback(() => {
     const text = filteredLines.map((l) => l.text).join("\n");
     navigator.clipboard?.writeText(text).catch(() => {});
@@ -349,7 +368,9 @@ export function ProcessLogs({
 
   async function handleDownload() {
     if (downloadMode === "visible") {
-      downloadText(filteredLines.map((l) => l.text).join("\n"));
+      downloadText(
+        filteredLines.filter(includesLevel).map((l) => l.text).join("\n"),
+      );
       setDownloadOpen(false);
       return;
     }
@@ -359,6 +380,9 @@ export function ProcessLogs({
       const res = await getStoredLogsRange({
         data: {
           processName: name,
+          ...(downloadLevels.size === 4
+            ? {}
+            : { levels: Array.from(downloadLevels) }),
           ...(downloadMode === "range"
             ? {
                 from: dayjs(rangeFrom).startOf("day").valueOf(),
@@ -578,7 +602,7 @@ export function ProcessLogs({
               active={downloadMode === "visible"}
               onClick={() => setDownloadMode("visible")}
               title="Visible logs"
-              description={`${filteredLines.length} lines currently shown (respects search and level filters)`}
+              description={`${filteredLines.length} lines currently shown (respects search)`}
             />
             <DownloadOption
               active={downloadMode === "all"}
@@ -602,6 +626,53 @@ export function ProcessLogs({
                   : "Requires monitoring to be enabled"
               }
             />
+          </div>
+          <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-muted-foreground">
+                Log levels
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  if (downloadLevels.size === 4)
+                    setDownloadLevels(new Set());
+                  else
+                    setDownloadLevels(
+                      new Set(["error", "warn", "info", "debug"]),
+                    );
+                }}
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                {downloadLevels.size === 4 ? "Clear all" : "Select all"}
+              </button>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {["error", "warn", "info", "debug"].map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={() => toggleDownloadLevel(level)}
+                  className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+                    downloadLevels.has(level)
+                      ? level === "error"
+                        ? "bg-red-500/20 text-red-400"
+                        : level === "warn"
+                          ? "bg-yellow-500/20 text-yellow-400"
+                          : level === "info"
+                            ? "bg-blue-500/20 text-blue-400"
+                            : "bg-gray-500/20 text-gray-400"
+                      : "bg-transparent text-muted-foreground opacity-50"
+                  }`}
+                >
+                  {level.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Only the selected levels are downloaded when not all are chosen;
+              lines without a detected level (LOG) are then excluded.
+            </p>
           </div>
           {downloadMode === "range" && (
             <RangePicker

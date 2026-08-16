@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDb } from "@/server/storage/client";
 import { monitoring, logEntries, processMetrics, alertPrefs, hostMetrics } from "@/server/storage/schema";
 import { findMonitorId, queryStoredLogs, getStoredLogsBounds } from "@/server/storage/logQueries";
+import { invalidateMonitor } from "@/server/storage/monitorCache";
 import { eq, desc, gte, asc, lte, and, min, max } from "drizzle-orm";
 import { authMiddleware } from "@/server/auth/middleware";
 
@@ -56,6 +57,7 @@ export const toggleMonitoringFn = createServerFn({ method: "POST" })
         db.insert(monitoring)
           .values({ pm2Name: data.pm2Name, createdAt: now })
           .run();
+        invalidateMonitor(data.pm2Name);
 
         // Backfill: read existing log file and insert into DB
         try {
@@ -66,7 +68,10 @@ export const toggleMonitoringFn = createServerFn({ method: "POST" })
           if (monRow && lines.length > 0) {
             for (const line of lines) {
               const ts = extractTimestamp(line.text);
-              const loggedAt = ts ? new Date(ts.replace(" ", "T")).getTime() || now : now;
+              const parsedTs = ts
+                ? new Date(ts.replace(" ", "T")).getTime() || now
+                : now;
+              const loggedAt = parsedTs > Date.now() ? Date.now() : parsedTs;
               const level = detectLogLevel ? detectLogLevel(line.text) : "";
               db.insert(logEntries).values({
                 monitorId: monRow.id,
@@ -83,6 +88,7 @@ export const toggleMonitoringFn = createServerFn({ method: "POST" })
       db.delete(monitoring)
         .where(eq(monitoring.pm2Name, data.pm2Name))
         .run();
+      invalidateMonitor(data.pm2Name);
     }
 
     return { ok: true };
@@ -119,6 +125,7 @@ export const getStoredLogsRangeFn = createServerFn({ method: "GET" })
       from: z.number().int().optional(),
       to: z.number().int().optional(),
       limit: z.number().int().optional(),
+      levels: z.array(z.string()).optional(),
     })
   )
   .handler(async ({ data }) => {
@@ -130,6 +137,7 @@ export const getStoredLogsRangeFn = createServerFn({ method: "GET" })
         from: data.from,
         to: data.to,
         limit: data.limit,
+        levels: data.levels,
       }),
     };
   });

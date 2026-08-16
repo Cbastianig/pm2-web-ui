@@ -21,6 +21,8 @@ import { readEnv } from "@/lib/env";
 import { lte } from "drizzle-orm";
 import { loadProcessList, normalizeProcessSummary } from "@/server/pm2";
 import { collectHostMetrics, storeHostSnapshot } from "@/server/host/metrics";
+import { rebuildMonitorCache } from "@/server/storage/monitorCache";
+import { pruneLogsByCount, pruneMetricsByCount } from "@/server/storage/retention";
 
 // Cleanup expired data every 10 minutes
 setInterval(
@@ -40,6 +42,14 @@ setInterval(
       db.delete(hostMetrics)
         .where(lte(hostMetrics.sampledAt, now - metricsRetention))
         .run();
+
+      const monRows = db.select().from(monTable).all();
+      const logCap = readEnv("MAX_LOG_LINES_PER_MONITOR");
+      const metricCap = readEnv("MAX_METRIC_SAMPLES_PER_MONITOR");
+      for (const mon of monRows) {
+        pruneLogsByCount(db, mon.id, logCap);
+        pruneMetricsByCount(db, mon.id, metricCap);
+      }
     } catch {}
   },
   10 * 60 * 1000,
@@ -52,35 +62,49 @@ setInterval(async () => {
     const monRows = db.select().from(monTable).all();
     if (monRows.length === 0) return;
 
+    rebuildMonitorCache(monRows);
+
     const processes = await loadProcessList();
     const now = Date.now();
 
+    const procByName = new Map(processes.map((p) => [p.name, p]));
+    const rows: Array<typeof processMetrics.$inferInsert> = [];
     for (const mon of monRows) {
-      const proc = processes.find((p) => p.name === mon.pm2Name);
+      const proc = procByName.get(mon.pm2Name);
       if (!proc) continue;
       const summary = normalizeProcessSummary(proc);
-      db.insert(processMetrics)
-        .values({
-          monitorId: mon.id,
-          sampledAt: now,
-          cpu: summary.cpu,
-          memory: summary.memory,
-          restarts: summary.restarts,
-          uptime: summary.uptime,
-          status: summary.status,
-          pid: summary.pid,
-        })
-        .run();
+      rows.push({
+        monitorId: mon.id,
+        sampledAt: now,
+        cpu: summary.cpu,
+        memory: summary.memory,
+        restarts: summary.restarts,
+        uptime: summary.uptime,
+        status: summary.status,
+        pid: summary.pid,
+      });
+    }
+
+    if (rows.length > 0) {
+      db.transaction((tx) => {
+        tx.insert(processMetrics).values(rows).run();
+      });
     }
   } catch {}
 }, 20 * 1000).unref();
 
 // Host metrics collection every 30 seconds
-setInterval(() => {
+let collectingHostMetrics = false;
+setInterval(async () => {
+  if (collectingHostMetrics) return;
+  collectingHostMetrics = true;
   try {
-    const snapshot = collectHostMetrics();
+    const snapshot = await collectHostMetrics();
     storeHostSnapshot(snapshot);
-  } catch {}
+  } catch {
+  } finally {
+    collectingHostMetrics = false;
+  }
 }, 30 * 1000).unref();
 
 export default createServerEntry({
