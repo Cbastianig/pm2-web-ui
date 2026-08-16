@@ -5,6 +5,18 @@ import { hostMetrics } from "@/server/storage/schema";
 import { readEnv } from "@/lib/env";
 import { lte, desc } from "drizzle-orm";
 
+let lastCpus: os.CpuInfo[] | null = null;
+
+function cpuTotalTicks(cpu: os.CpuInfo): number {
+  return (
+    cpu.times.user +
+    cpu.times.nice +
+    cpu.times.sys +
+    cpu.times.idle +
+    cpu.times.irq
+  );
+}
+
 export interface HostSnapshot {
   cpuPercent: number;
   cpuCount: number;
@@ -16,23 +28,23 @@ export interface HostSnapshot {
 
 export function collectHostMetrics(): HostSnapshot {
   const cpus = os.cpus();
-  const totalIdle = cpus.reduce((sum, c) => sum + c.times.idle, 0);
-  const totalTick = cpus.reduce(
-    (sum, c) =>
-      sum +
-      c.times.user +
-      c.times.nice +
-      c.times.sys +
-      c.times.idle +
-      c.times.irq,
-    0,
-  );
-  const cpuPercent =
-    totalTick > 0
-      ? 100 - (totalIdle / totalTick) * 100
-      : os.loadavg()[0]
-        ? Math.min(os.loadavg()[0]! * 10, 100)
-        : 0;
+
+  let cpuPercent = 0;
+  if (lastCpus && lastCpus.length === cpus.length) {
+    const prev = lastCpus;
+    const tickDelta = cpus.reduce(
+      (sum, c, i) => sum + cpuTotalTicks(c) - cpuTotalTicks(prev[i]!),
+      0,
+    );
+    const idleDelta = cpus.reduce(
+      (sum, c, i) => sum + c.times.idle - prev[i]!.times.idle,
+      0,
+    );
+    if (tickDelta > 0) {
+      cpuPercent = 100 - (idleDelta / tickDelta) * 100;
+    }
+  }
+  lastCpus = cpus;
 
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
