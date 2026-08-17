@@ -219,7 +219,7 @@ function AuthLayout() {
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-sidebar-border bg-sidebar/95 transition-all duration-300 ease-out lg:static lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-sidebar-border bg-sidebar/95 transition-all duration-300 ease-out lg:sticky lg:top-0 lg:h-dvh lg:translate-x-0",
           "backdrop-blur-xl",
           collapsed ? "w-[68px]" : "w-64",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
