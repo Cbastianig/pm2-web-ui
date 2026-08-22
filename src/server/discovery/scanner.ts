@@ -73,12 +73,6 @@ export function scanAll(scanPath: string): {
     console.error(`[OPS] Cannot read ${scanPath}: ${(err as Error).message}`);
   }
 
-  if (apps.length > 0 || cachedApps.length > 0) {
-    console.warn(
-      `[OPS] Scan: ${apps.length} app${apps.length !== 1 ? "s" : ""} found`,
-    );
-  }
-
   cachedApps = apps;
   cachedUnconfigured = unconfigured;
   lastScan = now;

@@ -56,6 +56,10 @@ import {
   ReferenceLine,
 } from "recharts";
 import { cn } from "@/lib/utils";
+import {
+  aggregateSeriesByApp,
+  type ProcessSeries,
+} from "@/lib/processGroups";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: DashboardPage,
@@ -146,13 +150,7 @@ function DashboardPage() {
   const [hostData, setHostData] = useState<
     Array<Record<string, number | string>>
   >([]);
-  const [processSeries, setProcessSeries] = useState<
-    Array<{
-      name: string;
-      points: Array<{ t: number; cpu: number; memory: number }>;
-      restartTimes: number[];
-    }>
-  >([]);
+  const [rawProcessSeries, setRawProcessSeries] = useState<ProcessSeries[]>([]);
   const [selectedProc, setSelectedProc] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [customRange, setCustomRange] = useState<{ from: Date; to: Date }>({
@@ -194,13 +192,8 @@ function DashboardPage() {
             diskTotal: h.diskTotal ?? 0,
           })),
         );
-        setProcessSeries(res.processes ?? []);
+        setRawProcessSeries(res.processes ?? []);
         setDataBounds(res.dataBounds ?? null);
-        setSelectedProc((prev) => {
-          if (prev && (res.processes ?? []).some((p: any) => p.name === prev))
-            return prev;
-          return (res.processes?.[0]?.name as string) ?? "";
-        });
       })
       .catch(() => {})
       .finally(() => !cancelled && setLoading(false));
@@ -208,6 +201,26 @@ function DashboardPage() {
       cancelled = true;
     };
   }, [query, getHistorical]);
+
+  const appByPm2Name = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of processes) {
+      if (p.appName) m.set(p.name, p.appName);
+    }
+    return m;
+  }, [processes]);
+
+  const processSeries = useMemo(
+    () => aggregateSeriesByApp(rawProcessSeries, appByPm2Name),
+    [rawProcessSeries, appByPm2Name],
+  );
+
+  useEffect(() => {
+    setSelectedProc((prev) => {
+      if (prev && processSeries.some((p) => p.name === prev)) return prev;
+      return processSeries[0]?.name ?? "";
+    });
+  }, [processSeries]);
 
   const stats = useMemo(() => {
     const online = processes.filter(

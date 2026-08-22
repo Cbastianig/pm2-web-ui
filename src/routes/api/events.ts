@@ -13,11 +13,53 @@ import {
 } from "@/server/providers";
 import type { Application } from "@/server/ops/types";
 import { readEnv } from "@/lib/env";
+import fs from "node:fs";
+import path from "node:path";
 
 const encoder = new TextEncoder();
 
 function sseEvent(type: string, data: any): string {
   return `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+
+function buildOpsProcessMap(): Map<
+  string,
+  { appName: string; color: "blue" | "green"; active: boolean }
+> {
+  const map = new Map<
+    string,
+    { appName: string; color: "blue" | "green"; active: boolean }
+  >();
+  try {
+    const { apps } = scanAll(readEnv("OPS_APPS_PATH"));
+    for (const d of apps) {
+      const cfg = d.config;
+      let activeColor: "blue" | "green" | null = null;
+      try {
+        const current = fs
+          .readFileSync(
+            path.resolve(d.appPath, cfg.deployment.currentFile),
+            "utf8",
+          )
+          .trim()
+          .toLowerCase();
+        if (current === "blue" || current === "green") activeColor = current;
+      } catch {
+        // current file not found yet
+      }
+      map.set(cfg.runtime.blue, {
+        appName: cfg.name,
+        color: "blue",
+        active: activeColor === "blue",
+      });
+      map.set(cfg.runtime.green, {
+        appName: cfg.name,
+        color: "green",
+        active: activeColor === "green",
+      });
+    }
+  } catch {}
+  return map;
 }
 
 export const Route = createFileRoute("/api/events")({
@@ -53,35 +95,55 @@ export const Route = createFileRoute("/api/events")({
                 const aMap = new Map(
                   aRows.map((r) => [r.pm2Name, r.alertsEnabled !== 0]),
                 );
-                const annotated = normalised.map((item) => ({
+                const annotatedBase = normalised.map((item) => ({
                   ...item,
                   isMonitored: mMap.has(item.name),
                   isOrphan: false,
                   alertsEnabled: aMap.get(item.name) ?? true,
                 }));
+                const opsProcessMap = buildOpsProcessMap();
+                const annotate = (item: any) => {
+                  const meta = opsProcessMap.get(item.name);
+                  return meta
+                    ? {
+                        ...item,
+                        appName: meta.appName,
+                        appColor: meta.color,
+                        appActive: meta.active,
+                      }
+                    : {
+                        ...item,
+                        appName: null,
+                        appColor: null,
+                        appActive: null,
+                      };
+                };
+                const annotated = annotatedBase.map(annotate);
                 for (const row of mRows) {
                   if (!activeNames.has(row.pm2Name)) {
-                    annotated.push({
-                      id: null,
-                      name: row.pm2Name,
-                      pid: null,
-                      status: "orphan",
-                      version: null,
-                      namespace: null,
-                      execMode: null,
-                      instances: null,
-                      restarts: 0,
-                      uptime: null,
-                      createdAt: null,
-                      scriptPath: null,
-                      cwd: null,
-                      watch: false,
-                      cpu: 0,
-                      memory: 0,
-                      isMonitored: true,
-                      isOrphan: true,
-                      alertsEnabled: aMap.get(row.pm2Name) ?? true,
-                    });
+                    annotated.push(
+                      annotate({
+                        id: null,
+                        name: row.pm2Name,
+                        pid: null,
+                        status: "orphan",
+                        version: null,
+                        namespace: null,
+                        execMode: null,
+                        instances: null,
+                        restarts: 0,
+                        uptime: null,
+                        createdAt: null,
+                        scriptPath: null,
+                        cwd: null,
+                        watch: false,
+                        cpu: 0,
+                        memory: 0,
+                        isMonitored: true,
+                        isOrphan: true,
+                        alertsEnabled: aMap.get(row.pm2Name) ?? true,
+                      }),
+                    );
                   }
                 }
                 annotated.sort((a, b) => {
@@ -119,8 +181,10 @@ export const Route = createFileRoute("/api/events")({
             eventBus.on("log", onLog);
 
             // Ops apps polling
+            let opsSending = false;
             async function sendOps() {
-              if (closed) return;
+              if (closed || opsSending) return;
+              opsSending = true;
               try {
                 const scanPath = readEnv("OPS_APPS_PATH");
                 const { apps: discovered, unconfigured } = scanAll(scanPath);
@@ -276,11 +340,18 @@ export const Route = createFileRoute("/api/events")({
                   `[OPS-SSE] sendOps failed:`,
                   (err as Error).message,
                 );
+              } finally {
+                opsSending = false;
               }
             }
 
             sendOps();
             const opsInterval = setInterval(sendOps, 10_000);
+
+            function onOpsRefresh() {
+              sendOps();
+            }
+            eventBus.on("ops:refresh", onOpsRefresh);
 
             const cleanup = () => {
               closed = true;
@@ -288,6 +359,7 @@ export const Route = createFileRoute("/api/events")({
               clearInterval(hostInterval);
               clearInterval(opsInterval);
               eventBus.off("log", onLog);
+              eventBus.off("ops:refresh", onOpsRefresh);
               controller.close();
             };
             request.signal.addEventListener("abort", cleanup);

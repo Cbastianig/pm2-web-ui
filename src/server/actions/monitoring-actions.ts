@@ -152,6 +152,35 @@ export const getStoredLogsBoundsFn = createServerFn({ method: "GET" })
     return getStoredLogsBounds(db, monitorId);
   });
 
+export const getMergedStoredLogsFn = createServerFn({ method: "GET" })
+  .middleware(auth())
+  .validator(
+    z.object({
+      processNames: z.array(z.string()).min(1),
+      from: z.number().int().optional(),
+      to: z.number().int().optional(),
+      levels: z.array(z.string()).optional(),
+    })
+  )
+  .handler(async ({ data }) => {
+    const db = getDb();
+    const all: Array<ReturnType<typeof queryStoredLogs>[number] & {
+      source: string;
+    }> = [];
+    for (const processName of data.processNames) {
+      const monitorId = findMonitorId(db, processName);
+      if (monitorId == null) continue;
+      const rows = queryStoredLogs(db, monitorId, {
+        from: data.from,
+        to: data.to,
+        levels: data.levels,
+      });
+      for (const r of rows) all.push({ ...r, source: processName });
+    }
+    all.sort((a, b) => (a.loggedAt ?? 0) - (b.loggedAt ?? 0));
+    return { entries: all };
+  });
+
 export const getProcessMetricsFn = createServerFn({ method: "GET" })
   .middleware(auth())
   .validator(z.object({ processName: z.string(), limit: z.number().default(144) }))

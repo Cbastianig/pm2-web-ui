@@ -6,6 +6,7 @@ import { OpsConfigSchema } from "@/server/discovery/types";
 import { invalidateScanCache, scanAll } from "@/server/discovery/scanner";
 import { gitlabProvider } from "@/server/providers";
 import { readEnv } from "@/lib/env";
+import { eventBus } from "@/server/events/bus";
 
 const OPS_CONFIG_FILE = "ops.config.json";
 
@@ -119,6 +120,7 @@ export const Route = createFileRoute("/api/ops/config")({
           "utf8"
         );
         invalidateScanCache();
+        eventBus.emit("ops:refresh");
 
         return Response.json({ ok: true, config: parsed.data });
       },

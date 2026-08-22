@@ -2,8 +2,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { flushLogsFn, readLogsFn } from "@/server/actions/process-actions";
 import {
-  getStoredLogsFn,
-  getStoredLogsRangeFn,
+  getMergedStoredLogsFn,
   getStoredLogsBoundsFn,
 } from "@/server/actions/monitoring-actions";
 import { Button } from "@/components/ui/button";
@@ -41,14 +40,36 @@ import {
   CalendarDays,
 } from "lucide-react";
 
+interface ProcessSource {
+  name: string;
+  isMonitored?: boolean;
+  flushId?: string | number | null;
+  color?: "blue" | "green";
+}
+
 interface ProcessLogsProps {
   name: string;
   isMonitored: boolean;
   flushProcessId?: string | number | null;
   scrollClassName?: string;
+  processes?: ProcessSource[];
 }
 
+type LogLine = {
+  text: string;
+  level: string;
+  source?: string;
+  ts?: number | null;
+};
+
 type LogBounds = { min: number | null; max: number | null } | null;
+
+function parseLogTs(text: string): number | null {
+  const m = text.match(/^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})/);
+  if (!m) return null;
+  const t = new Date(m[1]!.replace(" ", "T")).getTime();
+  return Number.isFinite(t) ? t : null;
+}
 
 function RangePicker({
   from,
@@ -172,19 +193,62 @@ export function ProcessLogs({
   isMonitored,
   flushProcessId,
   scrollClassName = "min-h-[420px]",
+  processes,
 }: ProcessLogsProps) {
   const flushLogs = useServerFn(flushLogsFn);
-  const getStoredLogs = useServerFn(getStoredLogsFn);
-  const getStoredLogsRange = useServerFn(getStoredLogsRangeFn);
+  const getMergedStoredLogs = useServerFn(getMergedStoredLogsFn);
   const getStoredLogsBounds = useServerFn(getStoredLogsBoundsFn);
   const readLogs = useServerFn(readLogsFn);
 
-  const [liveLines, setLiveLines] = useState<{ text: string; level: string }[]>(
-    [],
+  const sources = useMemo<
+    Array<{
+      name: string;
+      isMonitored: boolean;
+      flushId: string | number | null;
+      color?: "blue" | "green";
+    }>
+  >(() => {
+    if (processes && processes.length > 0) {
+      return processes.map((s) => ({
+        name: s.name,
+        isMonitored: s.isMonitored ?? isMonitored,
+        flushId: s.flushId ?? null,
+        color: s.color,
+      }));
+    }
+    return [
+      { name, isMonitored, flushId: flushProcessId ?? null },
+    ];
+    // Derive from content, not the prop reference: parents may pass a fresh
+    // array on every render (SSE updates), which would otherwise re-run the
+    // load/SSE effects and wipe live logs.
+  }, [
+    processes?.length,
+    name,
+    isMonitored,
+    flushProcessId,
+    processes
+      ? processes
+          .map(
+            (s) =>
+              `${s.name}|${s.isMonitored ?? ""}|${s.flushId ?? ""}|${s.color ?? ""}`,
+          )
+          .join(",")
+      : "",
+  ]);
+
+  const merged = sources.length > 1;
+  const anyMonitored = sources.some((s) => s.isMonitored);
+  const colorBySource = useMemo(
+    () =>
+      new Map(
+        sources.filter((s) => s.color).map((s) => [s.name, s.color!]),
+      ),
+    [sources],
   );
-  const [storedLines, setStoredLines] = useState<
-    { text: string; level: string }[]
-  >([]);
+
+  const [liveLines, setLiveLines] = useState<LogLine[]>([]);
+  const [storedLines, setStoredLines] = useState<LogLine[]>([]);
   const [storedReady, setStoredReady] = useState(false);
   const [logPaused, setLogPaused] = useState(false);
   const [logSearch, setLogSearch] = useState("");
@@ -215,47 +279,88 @@ export function ProcessLogs({
   useEffect(() => {
     setStoredReady(false);
     setLiveLines([]);
+    let cancelled = false;
 
-    if (isMonitored) {
-      getStoredLogs({ data: { processName: name, limit: 1000 } })
-        .then((res) => {
-          const lines = (res.entries || []).map((e: any) => ({
-            text: e.raw ?? e.log,
-            level: e.logLevel || e.log_level || "",
-          }));
-          setStoredLines(lines);
-          setStoredReady(true);
-        })
-        .catch(() => setStoredReady(true));
-    } else {
-      readLogs({ data: { pm2Name: name } })
-        .then((lines) => {
-          const snapshot = (lines || []).map((l: any) => ({
-            text: l.text,
-            level: l.level || "",
-          }));
-          setLiveLines(snapshot);
-          setStoredReady(true);
-        })
-        .catch(() => setStoredReady(true));
-    }
-  }, [name, isMonitored, getStoredLogs, readLogs]);
+    const loadStored = async () => {
+      const monitoredNames = sources
+        .filter((s) => s.isMonitored)
+        .map((s) => s.name);
+      const unmonitored = sources.filter((s) => !s.isMonitored);
+      const stored: LogLine[] = [];
+
+      if (monitoredNames.length > 0) {
+        try {
+          const res = await getMergedStoredLogs({
+            data: { processNames: monitoredNames },
+          });
+          for (const e of res.entries ?? []) {
+            stored.push({
+              text: e.raw ?? e.log,
+              level: e.logLevel || "",
+              source: e.source,
+              ts: e.loggedAt ?? parseLogTs(e.raw ?? e.log),
+            });
+          }
+        } catch {}
+      }
+
+      for (const s of unmonitored) {
+        try {
+          const lines = await readLogs({ data: { pm2Name: s.name } });
+          for (const l of lines ?? []) {
+            stored.push({
+              text: l.text,
+              level: l.level || "",
+              source: s.name,
+              ts: parseLogTs(l.text),
+            });
+          }
+        } catch {}
+      }
+
+      stored.sort((a, b) => (a.ts ?? Infinity) - (b.ts ?? Infinity));
+      if (!cancelled) {
+        setStoredLines(stored);
+        setStoredReady(true);
+      }
+    };
+
+    loadStored();
+    return () => {
+      cancelled = true;
+    };
+  }, [sources, getMergedStoredLogs, readLogs]);
 
   useEffect(() => {
-    if (!isMonitored) {
+    const monitored = sources.filter((s) => s.isMonitored);
+    if (monitored.length === 0) {
       setLogBounds(null);
       return;
     }
     let cancelled = false;
-    getStoredLogsBounds({ data: { processName: name } })
-      .then((res) => {
-        if (!cancelled) setLogBounds(res);
+    Promise.all(
+      monitored.map((s) =>
+        getStoredLogsBounds({ data: { processName: s.name } }),
+      ),
+    )
+      .then((results) => {
+        if (cancelled) return;
+        const mins = results
+          .map((r) => r.min)
+          .filter((v): v is number => v != null);
+        const maxs = results
+          .map((r) => r.max)
+          .filter((v): v is number => v != null);
+        setLogBounds({
+          min: mins.length ? Math.min(...mins) : null,
+          max: maxs.length ? Math.max(...maxs) : null,
+        });
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [name, isMonitored, getStoredLogsBounds]);
+  }, [sources, getStoredLogsBounds]);
 
   useEffect(() => {
     if (!logBounds?.min || !logBounds?.max) return;
@@ -270,25 +375,27 @@ export function ProcessLogs({
     es.addEventListener("logs", (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.processName === name && !logPaused) {
-          setLiveLines((prev) => [
-            ...prev.slice(-1000),
-            { text: data.text, level: data.level },
-          ]);
-        }
+        if (logPaused) return;
+        if (!sources.some((s) => s.name === data.processName)) return;
+        setLiveLines((prev) => [
+          ...prev.slice(-1000),
+          {
+            text: data.text,
+            level: data.level,
+            source: data.processName,
+            ts: parseLogTs(data.text),
+          },
+        ]);
       } catch {}
     });
     return () => es.close();
-  }, [name, logPaused]);
+  }, [sources, logPaused]);
 
   useEffect(() => {
     const container = logRef.current;
     if (!container) return;
     const onScroll = () => {
-      autoStickRef.current =
-        container.scrollHeight -
-          (container.scrollTop + container.clientHeight) <
-        48;
+      autoStickRef.current = container.scrollTop < 48;
     };
     container.addEventListener("scroll", onScroll);
     return () => container.removeEventListener("scroll", onScroll);
@@ -297,14 +404,14 @@ export function ProcessLogs({
   useEffect(() => {
     const container = logRef.current;
     if (container && autoStickRef.current) {
-      container.scrollTop = container.scrollHeight;
+      container.scrollTop = 0;
     }
   }, [liveLines, storedLines]);
 
   const allLines = useMemo(() => {
-    if (isMonitored && storedReady) return [...storedLines, ...liveLines];
-    return liveLines;
-  }, [isMonitored, storedReady, storedLines, liveLines]);
+    if (!storedReady) return liveLines;
+    return [...storedLines, ...liveLines];
+  }, [storedReady, storedLines, liveLines]);
 
   const filteredLines = useMemo(() => {
     return allLines.filter((l) => {
@@ -316,8 +423,13 @@ export function ProcessLogs({
     });
   }, [allLines, logFilters, logSearch]);
 
+  const displayLines = useMemo(
+    () => filteredLines.slice().reverse(),
+    [filteredLines],
+  );
+
   const rowVirtualizer = useVirtualizer({
-    count: filteredLines.length,
+    count: displayLines.length,
     getScrollElement: () => logRef.current,
     estimateSize: () => 22,
     overscan: 15,
@@ -377,9 +489,9 @@ export function ProcessLogs({
 
     setDownloading(true);
     try {
-      const res = await getStoredLogsRange({
+      const res = await getMergedStoredLogs({
         data: {
-          processName: name,
+          processNames: sources.map((s) => s.name),
           ...(downloadLevels.size === 4
             ? {}
             : { levels: Array.from(downloadLevels) }),
@@ -408,10 +520,13 @@ export function ProcessLogs({
   }
 
   async function handleFlush() {
-    if (flushProcessId == null) return;
+    const targets = sources.filter((s) => s.flushId != null);
+    if (targets.length === 0) return;
     setFlushing(true);
     try {
-      await flushLogs({ data: { processId: String(flushProcessId) } });
+      for (const s of targets) {
+        await flushLogs({ data: { processId: String(s.flushId) } });
+      }
       toast.success(`Logs flushed for ${name}`);
     } catch (e) {
       toast.error(`Flush failed: ${e instanceof Error ? e.message : "error"}`);
@@ -494,7 +609,7 @@ export function ProcessLogs({
         >
           <Download className="size-3" />
         </Button>
-        {flushProcessId != null && (
+        {sources.some((s) => s.flushId != null) && (
           <Button
             variant="ghost"
             size="icon"
@@ -526,7 +641,7 @@ export function ProcessLogs({
           style={{ height: rowVirtualizer.getTotalSize() }}
         >
           {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-            const line = filteredLines[virtualRow.index]!;
+            const line = displayLines[virtualRow.index]!;
             const timeMatch = line.text.match(
               /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/,
             );
@@ -539,6 +654,15 @@ export function ProcessLogs({
                   : line.level === "info"
                     ? "text-blue-400"
                     : "";
+            const sourceColor = line.source
+              ? colorBySource.get(line.source)
+              : undefined;
+            const badgeClass =
+              sourceColor === "blue"
+                ? "text-[oklch(0.78_0.16_220)]"
+                : sourceColor === "green"
+                  ? "text-[oklch(0.78_0.19_155)]"
+                  : "text-muted-foreground";
             return (
               <div
                 key={virtualRow.key}
@@ -550,6 +674,17 @@ export function ProcessLogs({
                 {timeStr && (
                   <span className="shrink-0 text-muted-foreground">
                     {timeStr}
+                  </span>
+                )}
+                {merged && line.source && (
+                  <span
+                    className={`w-5 shrink-0 text-center text-[10px] font-bold ${badgeClass}`}
+                  >
+                    {sourceColor === "blue"
+                      ? "B"
+                      : sourceColor === "green"
+                        ? "G"
+                        : "•"}
                   </span>
                 )}
                 <span
@@ -606,22 +741,22 @@ export function ProcessLogs({
             />
             <DownloadOption
               active={downloadMode === "all"}
-              disabled={!isMonitored}
+              disabled={!anyMonitored}
               onClick={() => setDownloadMode("all")}
               title="All stored logs"
               description={
-                isMonitored
+                anyMonitored
                   ? "Full history saved in the database"
                   : "Requires monitoring to be enabled"
               }
             />
             <DownloadOption
               active={downloadMode === "range"}
-              disabled={!isMonitored}
+              disabled={!anyMonitored}
               onClick={() => setDownloadMode("range")}
               title="By date range"
               description={
-                isMonitored
+                anyMonitored
                   ? "Stored logs between two dates"
                   : "Requires monitoring to be enabled"
               }

@@ -23,6 +23,9 @@ interface ProcessInfo {
   isMonitored: boolean;
   isOrphan: boolean;
   alertsEnabled: boolean;
+  appName: string | null;
+  appColor: "blue" | "green" | null;
+  appActive: boolean | null;
 }
 
 interface OpsProcessInfo {
