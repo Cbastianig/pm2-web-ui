@@ -395,7 +395,10 @@ export function ProcessLogs({
     const container = logRef.current;
     if (!container) return;
     const onScroll = () => {
-      autoStickRef.current = container.scrollTop < 48;
+      autoStickRef.current =
+        container.scrollHeight -
+          (container.scrollTop + container.clientHeight) <
+        48;
     };
     container.addEventListener("scroll", onScroll);
     return () => container.removeEventListener("scroll", onScroll);
@@ -404,7 +407,7 @@ export function ProcessLogs({
   useEffect(() => {
     const container = logRef.current;
     if (container && autoStickRef.current) {
-      container.scrollTop = 0;
+      container.scrollTop = container.scrollHeight;
     }
   }, [liveLines, storedLines]);
 
@@ -423,13 +426,8 @@ export function ProcessLogs({
     });
   }, [allLines, logFilters, logSearch]);
 
-  const displayLines = useMemo(
-    () => filteredLines.slice().reverse(),
-    [filteredLines],
-  );
-
   const rowVirtualizer = useVirtualizer({
-    count: displayLines.length,
+    count: filteredLines.length,
     getScrollElement: () => logRef.current,
     estimateSize: () => 22,
     overscan: 15,
@@ -641,7 +639,7 @@ export function ProcessLogs({
           style={{ height: rowVirtualizer.getTotalSize() }}
         >
           {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-            const line = displayLines[virtualRow.index]!;
+            const line = filteredLines[virtualRow.index]!;
             const timeMatch = line.text.match(
               /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/,
             );

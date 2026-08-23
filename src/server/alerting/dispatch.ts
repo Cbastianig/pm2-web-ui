@@ -114,8 +114,7 @@ export function initAlerting() {
     "log",
     (data: { text: string; processName: string; level: string }) => {
       try {
-        if (!data.level || (data.level !== "error" && data.level !== "warn"))
-          return;
+        if (data.level !== "error") return;
         if (isMuted(data.processName)) return;
 
         const mode = getSetting("alert.mode", "every");

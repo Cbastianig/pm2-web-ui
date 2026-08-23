@@ -382,8 +382,8 @@ function ProcessDetailPage() {
           </CardContent>
         </Card>
 
-        <div className="overflow-hidden rounded-2xl border border-border/60 bg-card/40 shadow-sm backdrop-blur-sm">
-          <div className="flex items-center justify-between border-b border-border/60 px-4 py-2.5">
+        <div className="flex h-[65vh] flex-col overflow-hidden rounded-2xl border border-border/60 bg-card/40 shadow-sm backdrop-blur-sm">
+          <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-4 py-2.5">
             <div>
               <p className="text-sm font-medium">Live logs</p>
               <p className="text-xs text-muted-foreground">
@@ -396,7 +396,7 @@ function ProcessDetailPage() {
             name={group.name}
             isMonitored={group.isMonitored}
             flushProcessId={active.id}
-            scrollClassName="min-h-[500px]"
+            scrollClassName="min-h-0"
             processes={group.members.map((m) => ({
               name: m.name,
               isMonitored: m.isMonitored,
@@ -603,8 +603,8 @@ function ProcessDetailPage() {
         </CardContent>
       </Card>
 
-      <div className="overflow-hidden rounded-2xl border border-border/60 bg-card/40 shadow-sm backdrop-blur-sm">
-        <div className="flex items-center justify-between border-b border-border/60 px-4 py-2.5">
+      <div className="flex h-[65vh] flex-col overflow-hidden rounded-2xl border border-border/60 bg-card/40 shadow-sm backdrop-blur-sm">
+        <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-4 py-2.5">
           <div>
             <p className="text-sm font-medium">Live logs</p>
             <p className="text-xs text-muted-foreground">
@@ -617,7 +617,7 @@ function ProcessDetailPage() {
           name={proc.name}
           isMonitored={proc.isMonitored}
           flushProcessId={proc.id}
-          scrollClassName="min-h-[500px]"
+          scrollClassName="min-h-0"
         />
       </div>
 
